@@ -1,30 +1,9 @@
 from datetime import timedelta
 from typing import Any
 
+
 from .schemas import ReplanRequest, TripRequest
-
-
-DESTINATION_SUGGESTIONS: dict[str, list[str]] = {
-    'Paris': [
-        'Louvre Museum',
-        'Eiffel Tower (viewpoint)',
-        'Le Marais walking route',
-        'Seine riverbank picnic',
-    ],
-    'Tokyo': [
-        'Senso-ji Temple',
-        'Shibuya Crossing viewpoint',
-        'Tsukiji food stalls',
-        'Meiji Shrine and Yoyogi Park',
-    ],
-    'Lisbon': [
-        'Belém Tower',
-        'Alfama neighborhood walk',
-        'Time Out Market food crawl',
-        'Miradouro viewpoint',
-    ],
-}
-
+from .catalog import DESTINATION_SUGGESTIONS
 
 class TripPlannerAgent:
     def _pick_suggestion(self, destination: str, index: int) -> str:

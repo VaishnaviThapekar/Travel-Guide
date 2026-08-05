@@ -115,4 +115,40 @@ body {
 .panel+.panel {
     margin-top: 0.75rem;
 }
+
+/* Responsive tweaks for small screens */
+@media (max-width: 640px) {
+    .site-header {
+        padding: 1rem;
+    }
+
+    .site-header img {
+        display: block;
+        width: 8rem;
+        height: auto;
+    }
+
+    .itinerary-card {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .itinerary-card img {
+        width: 100%;
+        height: 160px;
+        object-fit: cover;
+        border-radius: 12px;
+    }
+
+    .panel {
+        padding: 0.85rem;
+    }
+}
+
+/* Accessibility helpers */
+.form-input,
+.panel,
+.itinerary-card {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }

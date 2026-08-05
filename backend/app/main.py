@@ -9,7 +9,8 @@ from sqlalchemy import select
 
 from .db import SessionLocal, engine
 from .models import Base, Trip, TripRevision, User
-from .planner import TripPlannerAgent, DESTINATION_SUGGESTIONS
+from .planner import TripPlannerAgent
+from .catalog import DESTINATION_SUGGESTIONS
 from .schemas import (
     ChatRequest,
     ChatResponse,
