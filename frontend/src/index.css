@@ -167,3 +167,94 @@ body {
 .travel-badge {
     color: #0f172a;
 }
+
+/* Subtle pulsate to feel alive */
+.travel-badge {
+    animation: badgePulse 3.5s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+    0% {
+        transform: translateY(0);
+        opacity: 0.98;
+    }
+
+    50% {
+        transform: translateY(-2px) scale(1.01);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(0);
+        opacity: 0.98;
+    }
+}
+
+/* Entrance animation for guide-like cards */
+.itinerary-card {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: fadeUp 520ms cubic-bezier(.16, .84, .42, 1) forwards;
+    /* index-based delay via --i */
+    animation-delay: calc(var(--i, 0) * 80ms);
+}
+
+@keyframes fadeUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Floating hero text for travel feel */
+.site-header .hero-title {
+    display: inline-block;
+    animation: heroFloat 6s ease-in-out infinite;
+}
+
+@keyframes heroFloat {
+    0% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-6px);
+    }
+
+    100% {
+        transform: translateY(0);
+    }
+}
+
+/* Parallax-esque background shift when scrolling (soft) */
+.travel-hero {
+    background-attachment: fixed;
+    background-position: center right;
+    background-size: cover;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Shimmer on info cards */
+.panel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0.02) 55%, rgba(255, 255, 255, 0) 100%);
+    transform: translateX(-120%);
+    transition: transform 0.9s ease;
+}
+
+.panel:hover::after {
+    transform: translateX(20%);
+}
+
+/* Action buttons with soft lift */
+.btn-cta {
+    transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.btn-cta:active {
+    transform: translateY(1px) scale(0.997);
+}

@@ -415,10 +415,10 @@ export default function App() {
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(251,113,133,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_28%),linear-gradient(180deg,#fffdf7_0%,#f8fafc_55%,#eef2ff_100%)] text-slate-900">
             <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-                <header className="site-header mb-6 flex flex-col gap-4 rounded-[28px] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur md:flex-row md:items-center md:justify-between">
+                <header className="site-header travel-hero mb-6 flex flex-col gap-4 rounded-[28px] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur md:flex-row md:items-center md:justify-between">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.4em] text-coral">AI Travel Guide</p>
-                        <h1 className="mt-2 text-3xl font-black tracking-tight text-ink sm:text-5xl">Plan the trip. Adapt on the road.</h1>
+                        <h1 className="mt-2 text-3xl font-black tracking-tight text-ink sm:text-5xl hero-title">Plan the trip. Adapt on the road.</h1>
                         <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">A concierge-style travel agent that builds itineraries, checks the budget, and keeps weather and map context in view.</p>
                     </div>
                     <div className="hidden md:block">
@@ -517,8 +517,8 @@ export default function App() {
                                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">${totalCost.toLocaleString()} estimated</span>
                             </div>
                             <div className="mt-5 grid gap-4" role="list" aria-label="Day-by-day itinerary">
-                                {itinerary.map((day) => (
-                                    <article key={day.day} role="listitem" className="itinerary-card flex gap-3 items-start">
+                                {itinerary.map((day, idx) => (
+                                    <article key={day.day} role="listitem" className="itinerary-card flex gap-3 items-start" style={{ ['--i' as any]: idx }}>
                                         <img src={destinationImage} alt={displayKey} className="w-28 h-20 rounded-md object-cover flex-shrink-0" />
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
