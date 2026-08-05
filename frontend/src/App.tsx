@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import useReveal from './hooks/useReveal';
 import { Link } from 'react-router-dom';
 import { useAuth, authHeader } from './auth/AuthContext.tsx';
 
@@ -110,6 +111,8 @@ function buildItinerary(destination: string, budget: number, startDate: string, 
 }
 
 export default function App() {
+    useReveal();
+
     const [destination, setDestination] = useState('Lisbon');
     const [startDate, setStartDate] = useState('2026-07-10');
     const [endDate, setEndDate] = useState('2026-07-13');
@@ -779,7 +782,7 @@ function MiniBlock({ label, text }: { label: string; text: string }) {
 
 function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
     return (
-        <div className="panel shadow-glow backdrop-blur">
+        <div className="panel shadow-glow backdrop-blur" data-reveal>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-coral">{subtitle}</p>
             <h3 className="mt-2 text-xl font-bold text-ink">{title}</h3>
             <div className="mt-3">{children}</div>
