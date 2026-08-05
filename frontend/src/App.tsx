@@ -516,9 +516,9 @@ export default function App() {
                                 </div>
                                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">${totalCost.toLocaleString()} estimated</span>
                             </div>
-                            <div className="mt-5 grid gap-4">
+                            <div className="mt-5 grid gap-4" role="list" aria-label="Day-by-day itinerary">
                                 {itinerary.map((day) => (
-                                    <article key={day.day} className="itinerary-card flex gap-3 items-start">
+                                    <article key={day.day} role="listitem" className="itinerary-card flex gap-3 items-start">
                                         <img src={destinationImage} alt={displayKey} className="w-28 h-20 rounded-md object-cover flex-shrink-0" />
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
@@ -586,10 +586,18 @@ export default function App() {
 
                         <Panel title="AI Assistant Chat" subtitle="Streaming placeholder">
                             <div className="space-y-3">
-                                <div className="max-h-56 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-3">
+                                <div
+                                    className="max-h-56 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-3"
+                                    role="log"
+                                    aria-live="polite"
+                                    aria-atomic="false"
+                                    tabIndex={0}
+                                >
                                     {chatMessages.map((message, idx) => (
                                         <div
                                             key={`${message.role}-${idx}`}
+                                            role="article"
+                                            aria-label={message.role}
                                             className={`rounded-2xl px-3 py-2 text-sm ${message.role === 'assistant' ? 'bg-white text-slate-800' : 'bg-ink text-white'}`}
                                         >
                                             <p className="text-[10px] uppercase tracking-[0.18em] opacity-70">{message.role}</p>

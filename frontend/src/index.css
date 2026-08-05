@@ -152,3 +152,18 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
+
+/* Focus-visible styles for keyboard users */
+:where(button, a, input, textarea, select, [role="button"]) :focus-visible {
+    outline: 3px solid rgba(59, 130, 246, 0.9);
+    outline-offset: 2px;
+}
+
+.form-input:focus-visible {
+    box-shadow: 0 8px 32px rgba(59, 130, 246, 0.08);
+}
+
+/* Ensure sufficient contrast for badge text */
+.travel-badge {
+    color: #0f172a;
+}
