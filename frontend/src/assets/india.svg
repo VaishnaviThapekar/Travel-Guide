@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="560" viewBox="0 0 800 560" role="img" aria-labelledby="title desc">
+  <title id="title">India travel illustration</title>
+  <desc id="desc">A warm illustrated Jaipur skyline with the Hawa Mahal and an Indian sun.</desc>
+  <rect width="800" height="560" fill="#fff4df"/>
+  <circle cx="620" cy="130" r="78" fill="#f59e0b" opacity=".8"/>
+  <path d="M0 430 Q170 350 320 430 T800 415 V560 H0Z" fill="#f4b183"/>
+  <path d="M0 470 Q210 390 390 470 T800 450 V560 H0Z" fill="#d97757"/>
+  <path d="M170 435 V265 H210 V220 H255 V185 H300 V220 H345 V265 H385 V435Z" fill="#e76f51"/>
+  <path d="M190 265 H365 L345 230 H210Z" fill="#c2413a"/>
+  <g fill="#fff4df">
+    <path d="M205 290 h24 v38 h-24z"/>
+    <path d="M245 290 h24 v38 h-24z"/>
+    <path d="M285 290 h24 v38 h-24z"/>
+    <path d="M325 290 h24 v38 h-24z"/>
+    <path d="M205 350 h24 v38 h-24z"/>
+    <path d="M245 350 h24 v38 h-24z"/>
+    <path d="M285 350 h24 v38 h-24z"/>
+    <path d="M325 350 h24 v38 h-24z"/>
+  </g>
+  <path d="M450 435 V300 Q520 240 590 300 V435Z" fill="#b45309"/>
+  <path d="M430 300 Q520 205 610 300" fill="none" stroke="#92400e" stroke-width="18"/>
+  <path d="M485 435 V345 Q520 315 555 345 V435Z" fill="#fff4df"/>
+  <text x="48" y="80" font-family="Georgia, serif" font-size="34" font-weight="700" fill="#7c2d12">India, your way</text>
+  <text x="50" y="115" font-family="Arial, sans-serif" font-size="17" letter-spacing="3" fill="#9a3412">HERITAGE · FOOD · COASTLINES</text>
+</svg>

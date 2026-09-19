@@ -231,3 +231,30 @@ def search_places(query: str = "") -> dict[str, Any]:
             }
 
     return {"query": q, "results": [], "source": "fallback"}
+
+
+def build_route(stops: list[str]) -> dict[str, Any]:
+    route: list[dict[str, Any]] = []
+    previous: dict[str, Any] | None = None
+    for stop in stops[:8]:
+        result = search_places(stop)
+        place = (result.get("results") or [None])[0]
+        if not place:
+            continue
+        distance = 0.0
+        if previous and place.get("lat") is not None and previous.get("lat") is not None:
+            distance = round(_distance_km(float(previous["lat"]), float(previous["lng"]), float(place["lat"]), float(place["lng"])), 1)
+        route.append(
+            {
+                "name": place.get("name") or stop,
+                "category": place.get("category") or "stop",
+                "lat": place.get("lat"),
+                "lng": place.get("lng"),
+                "distance_km": distance,
+                "travel_time_min": max(5, round(distance / 22 * 60)) if distance else 10,
+                "mode": "walk or local transport",
+                "source": result.get("source", "fallback"),
+            }
+        )
+        previous = place
+    return {"stops": route, "source": "nominatim-sequenced-route" if route else "fallback"}

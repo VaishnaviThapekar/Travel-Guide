@@ -21,6 +21,8 @@ class Trip(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     budget_breakdown_json: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False, default=dict)
     itinerary_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    checklist_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    journal_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     data_source_notes_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -49,6 +51,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     trips: Mapped[list[Trip]] = relationship(backref='owner', primaryjoin="User.id==Trip.owner_id")

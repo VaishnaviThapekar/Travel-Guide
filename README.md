@@ -1,14 +1,22 @@
 <!-- markdownlint-disable MD022 MD032 -->
 
-# AI Travel Guide for Tourists
+# India Travel Guide for Tourists
 
-A polished travel-planning app that helps users generate, save, and refine trip itineraries with AI assistance, budget logic, weather context, and trip ownership support.
+An India-first travel-planning app that helps users generate, save, and refine city and circuit itineraries with AI assistance, INR budget logic, weather context, and trip ownership support.
 
 ## Included features
 - FastAPI backend with SQLite default storage and PostgreSQL-ready configuration
 - JWT-based signup, login, forgot-password, and protected trip access
 - React + TypeScript + Vite frontend with responsive travel dashboard UI
 - AI trip planning and re-planning flow with saved trip history
+- India destination discovery ranked by budget, duration, interests, and season
+- Persisted personal travel profile for interests, food preferences, style, and transport
+- India travel toolkit with hotel, train/metro, restaurant, route, and notification guidance
+- Real-time research panel for weather, mapped places, opening hours, source freshness, and provider status
+- Multimodal image analysis for hotel comparisons and monument identification
+- Group travel planning with shared constraints and preference tracks
+- Eco-friendly planning mode prioritizing public transport, walking, and local businesses
+- Natural-language expense categorization into the trip journal and budget context
 - Revision tracking and ownership-aware trip access
 - File upload support for itinerary documents and travel notes
 - Live OpenStreetMap search/embed, weather and POI cards, FAQ panel, and browser speech assistant
@@ -29,6 +37,15 @@ Optional PostgreSQL:
 - Set `DATABASE_URL` before starting the backend, for example:
   `postgresql+psycopg://user:password@localhost:5432/ai_travel_guide`
 
+Optional real-time providers:
+- `AMADEUS_CLIENT_ID` and `AMADEUS_CLIENT_SECRET` for flight availability adapters
+- `INDIAN_RAIL_API_KEY` for live Indian train availability
+- `HOTEL_API_KEY` for live hotel rates
+- `TICKETMASTER_API_KEY` for current events
+- `AI_VISION_MODEL` to override the default vision-capable model
+
+Weather, geocoding, mapped places, and mapped opening hours use public Open-Meteo and OpenStreetMap services. The research panel labels optional providers as unavailable until credentials are configured; it does not invent current prices or availability.
+
 Frontend:
 1. `cd frontend`
 2. `npm install`
@@ -43,6 +60,7 @@ Frontend:
 - Upload travel documents or reference files
 - Search destinations directly in the embedded OpenStreetMap view
 - Use browser speech recognition to send spoken prompts to the assistant
+- Discover Indian destinations including Jaipur, Delhi, Mumbai, Goa, Kochi, Varanasi, and Udaipur
 
 ## Optional production enhancements
 1. Set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` for richer LLM-backed replies.

@@ -88,6 +88,83 @@ type MapApiResponse = {
     source: string;
 };
 
+type TravelProfile = {
+    budget_range: string;
+    interests: string[];
+    food_preferences: string[];
+    travel_style: string;
+    preferred_transport: string[];
+};
+
+type TravelRecommendations = {
+    destination: string;
+    currency: string;
+    hotels: Array<{ name: string; area: string; nightly_inr: number; rating: number }>;
+    transport: Array<{ mode: string; note: string; estimated_inr: number }>;
+    restaurants: Array<{ name: string; cuisine: string; price_band: string; area: string }>;
+    route_tip: string;
+    notifications: Array<{ type: string; message: string }>;
+};
+
+type DestinationRecommendation = {
+    name: string;
+    region: string;
+    best_for: string[];
+    season: string;
+};
+
+type ChecklistItem = {
+    id: string;
+    label: string;
+    category: string;
+    checked: boolean;
+};
+
+type ComparisonOption = {
+    destination: string;
+    estimated_cost: number;
+    budget_fit: boolean;
+    travel_time: string;
+    activities: string;
+    weather: string;
+    food: string;
+    relaxation: string;
+};
+
+type GroupPlan = {
+    consensus: string;
+    plan: string[];
+    constraints_applied: string;
+    budget_strategy: string;
+};
+
+type RouteStop = {
+    name: string;
+    category: string;
+    distance_km: number;
+    travel_time_min: number;
+    mode: string;
+};
+
+type JournalEntry = {
+    id: string;
+    kind: string;
+    text: string;
+    amount_inr: number | null;
+    place: string | null;
+    file_path: string | null;
+    created_at: string;
+};
+
+type ResearchReport = {
+    updated_at: string;
+    weather: WeatherApiResponse;
+    attractions_and_restaurants: Array<{ name: string; category: string; opening_hours?: string; website?: string; source: string }>;
+    providers: Record<string, { available: boolean; provider: string | null; message: string }>;
+    source_notes: string[];
+    limitations: string[];
+};
+
 type RevisionApiResponse = {
     version: number;
     note: string;
@@ -99,6 +176,7 @@ type ChatApiResponse = {
     reply: string;
     sources: string[];
     stream_tokens: string[];
+    trip_update?: TripApiResponse;
 };
 
 type UploadMeta = {
@@ -115,9 +193,15 @@ type ChatMessage = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
-const featuredDestinations = ['Paris', 'Tokyo', 'Lisbon', 'Cape Town'];
+const featuredDestinations = ['Jaipur', 'Delhi', 'Mumbai', 'Goa', 'Kochi', 'Varanasi'];
 
 const DESTINATION_IMAGES: Record<string, string> = {
+    Jaipur: new URL('./assets/india.svg', import.meta.url).href,
+    Delhi: new URL('./assets/india.svg', import.meta.url).href,
+    Mumbai: new URL('./assets/india.svg', import.meta.url).href,
+    Goa: new URL('./assets/india.svg', import.meta.url).href,
+    Kochi: new URL('./assets/india.svg', import.meta.url).href,
+    Varanasi: new URL('./assets/india.svg', import.meta.url).href,
     Paris: new URL('./assets/paris.svg', import.meta.url).href,
     Tokyo: new URL('./assets/tokyo.svg', import.meta.url).href,
     Lisbon: new URL('./assets/lisbon.svg', import.meta.url).href,
@@ -143,12 +227,13 @@ function buildItinerary(destination: string, budget: number, startDate: string, 
 export default function App() {
     useReveal();
 
-    const [destination, setDestination] = useState('Lisbon');
-    const [startDate, setStartDate] = useState('2026-07-10');
-    const [endDate, setEndDate] = useState('2026-07-13');
-    const [budget, setBudget] = useState(1200);
+    const [destination, setDestination] = useState('Jaipur');
+    const [startDate, setStartDate] = useState('2026-10-10');
+    const [endDate, setEndDate] = useState('2026-10-13');
+    const [budget, setBudget] = useState(100000);
     const [style, setStyle] = useState('Balanced');
     const [interests, setInterests] = useState('Food, history, viewpoints');
+    const [ecoMode, setEcoMode] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -157,9 +242,29 @@ export default function App() {
     const [weather, setWeather] = useState<WeatherApiResponse | null>(null);
     const [poiResults, setPoiResults] = useState<Array<{ name: string; category: string }>>([]);
     const [mapPlaces, setMapPlaces] = useState<Array<{ name: string; category: string; distance_km: number }>>([]);
-    const [mapSearch, setMapSearch] = useState('Lisbon');
+    const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
+    const [travelRecommendations, setTravelRecommendations] = useState<TravelRecommendations | null>(null);
+    const [destinationRecommendations, setDestinationRecommendations] = useState<DestinationRecommendation[]>([]);
+    const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+    const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+    const [journalDiary, setJournalDiary] = useState('');
+    const [journalNote, setJournalNote] = useState('');
+    const [journalPlace, setJournalPlace] = useState('');
+    const [journalExpense, setJournalExpense] = useState('');
+    const [discovering, setDiscovering] = useState(false);
+    const [compareFirst, setCompareFirst] = useState('Goa');
+    const [compareSecond, setCompareSecond] = useState('Kerala');
+    const [compareBudget, setCompareBudget] = useState(30000);
+    const [compareDays, setCompareDays] = useState(5);
+    const [comparison, setComparison] = useState<ComparisonOption[]>([]);
+    const [comparing, setComparing] = useState(false);
+    const [groupMembers, setGroupMembers] = useState('Vaishnavi: vegetarian\nFriend 1: adventure\nFriend 2: museums');
+    const [groupPlan, setGroupPlan] = useState<GroupPlan | null>(null);
+    const [grouping, setGrouping] = useState(false);
+    const [researchReport, setResearchReport] = useState<ResearchReport | null>(null);
+    const [mapSearch, setMapSearch] = useState('Jaipur');
     const [mapEmbedUrl, setMapEmbedUrl] = useState(
-        'https://www.openstreetmap.org/export/embed.html?bbox=-9.2209%2C38.6900%2C-9.0400%2C38.7700&layer=mapnik&marker=38.7223%2C-9.1393',
+        'https://www.openstreetmap.org/export/embed.html?bbox=75.70%2C26.85%2C75.88%2C26.98&layer=mapnik&marker=26.9124%2C75.7873',
     );
     const [faqResults, setFaqResults] = useState<FaqApiResponse['results']>([]);
     const [sourceNotes, setSourceNotes] = useState<string[]>(['Mock AI draft']);
@@ -179,7 +284,19 @@ export default function App() {
     const [uploadFiles, setUploadFiles] = useState<UploadMeta[]>([]);
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState('');
+    const [visionFiles, setVisionFiles] = useState<File[]>([]);
+    const [visionPrompt, setVisionPrompt] = useState('Which hotel or monument option fits my itinerary best?');
+    const [visionResult, setVisionResult] = useState('');
+    const [visionLoading, setVisionLoading] = useState(false);
     const [voiceActive, setVoiceActive] = useState(false);
+    const [profile, setProfile] = useState<TravelProfile>({
+        budget_range: 'mid-range',
+        interests: ['food', 'heritage'],
+        food_preferences: ['vegetarian-friendly'],
+        travel_style: 'balanced',
+        preferred_transport: ['train', 'metro'],
+    });
+    const [profileStatus, setProfileStatus] = useState('');
     const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
     const authH = authHeader() as Record<string, string>;
@@ -194,10 +311,13 @@ export default function App() {
 
     useEffect(() => {
         void refreshSavedTrips();
+        void refreshProfile();
+        void refreshTravelRecommendations(destination, budget);
+        void refreshResearch(destination, startDate, endDate);
     }, []);
 
     const displayKey = (displayDestination || destination).split(',')[0].trim();
-    const destinationImage = DESTINATION_IMAGES[displayKey] ?? DESTINATION_IMAGES['Lisbon'];
+    const destinationImage = DESTINATION_IMAGES[displayKey] ?? DESTINATION_IMAGES['Jaipur'];
 
     async function generatePlan() {
         setLoading(true);
@@ -215,6 +335,10 @@ export default function App() {
                 .filter(Boolean),
             food_preferences: [],
         };
+
+        if (ecoMode) {
+            payload.interests.push('eco-friendly public transport and local businesses');
+        }
 
         try {
             const tripResponse = await fetch(`${apiBaseUrl}/trips`, {
@@ -287,8 +411,14 @@ export default function App() {
                         })));
                     }
                     await refreshMapForDestination(tripData.destination);
+                    await refreshRoute(tripData.destination);
                 }
             }
+
+            await refreshTravelRecommendations(tripData.destination, tripData.budget);
+            await refreshResearch(tripData.destination, tripData.start_date, tripData.end_date);
+            await refreshChecklist(tripData.trip_id);
+            await refreshJournal(tripData.trip_id);
 
             await refreshSavedTrips(tripData.trip_id);
             await refreshRevisions(tripData.trip_id);
@@ -344,6 +474,15 @@ export default function App() {
         }
     }
 
+    async function refreshRoute(dest: string) {
+        const stops = `${dest},${dest} Fort,${dest} Museum,${dest} Lunch,${dest} Beach,${dest} Dinner`;
+        const response = await fetch(`${apiBaseUrl}/maps/route?stops=${encodeURIComponent(stops)}`);
+        if (response.ok) {
+            const data = (await response.json()) as { stops: RouteStop[] };
+            setRouteStops(data.stops);
+        }
+    }
+
     async function handleMapSearch() {
         const trimmed = mapSearch.trim();
         if (!trimmed) {
@@ -362,6 +501,206 @@ export default function App() {
         setSavedTrips(items);
         if (preferredTripId) {
             setTripId(preferredTripId);
+        }
+    }
+
+    async function refreshProfile() {
+        const response = await fetch(`${apiBaseUrl}/profile`, { headers: { ...authH } });
+        if (!response.ok) {
+            return;
+        }
+        const data = (await response.json()) as { profile: TravelProfile };
+        setProfile(data.profile);
+    }
+
+    async function saveProfile() {
+        setProfileStatus('Saving profile...');
+        const response = await fetch(`${apiBaseUrl}/profile`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...authH },
+            body: JSON.stringify({ profile }),
+        });
+        setProfileStatus(response.ok ? 'Profile saved' : 'Sign in to save your profile');
+    }
+
+    async function refreshTravelRecommendations(dest: string, budgetAmount: number) {
+        const response = await fetch(`${apiBaseUrl}/travel/recommendations?destination=${encodeURIComponent(dest)}&budget=${budgetAmount}`);
+        if (response.ok) {
+            setTravelRecommendations((await response.json()) as TravelRecommendations);
+        }
+    }
+
+    async function refreshChecklist(activeTripId: string) {
+        const response = await fetch(`${apiBaseUrl}/trips/${activeTripId}/checklist`, { headers: { ...authH } });
+        if (response.ok) {
+            setChecklist((await response.json()) as ChecklistItem[]);
+        }
+    }
+
+    async function refreshJournal(activeTripId: string) {
+        const response = await fetch(`${apiBaseUrl}/trips/${activeTripId}/journal`, { headers: { ...authH } });
+        if (response.ok) {
+            const data = (await response.json()) as { entries: JournalEntry[]; diary: string };
+            setJournalEntries(data.entries);
+            setJournalDiary(data.diary);
+        }
+    }
+
+    async function addJournalEntry() {
+        if (!tripId || !journalNote.trim()) {
+            return;
+        }
+        const entry: JournalEntry = {
+            id: `journal_${Date.now()}`,
+            kind: journalExpense ? 'expense' : 'note',
+            text: journalNote.trim(),
+            amount_inr: journalExpense ? Number(journalExpense) : null,
+            place: journalPlace.trim() || null,
+            file_path: null,
+            created_at: new Date().toISOString(),
+        };
+        const response = await fetch(`${apiBaseUrl}/trips/${tripId}/journal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authH },
+            body: JSON.stringify({ entry }),
+        });
+        if (response.ok) {
+            setJournalNote('');
+            setJournalPlace('');
+            setJournalExpense('');
+            await refreshJournal(tripId);
+        }
+    }
+
+    async function toggleChecklistItem(itemId: string) {
+        if (!tripId) {
+            return;
+        }
+        const nextItems = checklist.map((item) => item.id === itemId ? { ...item, checked: !item.checked } : item);
+        setChecklist(nextItems);
+        const response = await fetch(`${apiBaseUrl}/trips/${tripId}/checklist`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...authH },
+            body: JSON.stringify({ items: nextItems }),
+        });
+        if (!response.ok) {
+            setChecklist(checklist);
+        }
+    }
+
+    async function refreshResearch(dest: string, start: string, end: string) {
+        const response = await fetch(`${apiBaseUrl}/research?destination=${encodeURIComponent(dest)}&start_date=${start}&end_date=${end}`);
+        if (response.ok) {
+            setResearchReport((await response.json()) as ResearchReport);
+        }
+    }
+
+    async function replanForWeather() {
+        if (!tripId) {
+            setChatError('Generate or load a trip before checking for weather conflicts.');
+            return;
+        }
+        const response = await fetch(`${apiBaseUrl}/trips/${tripId}/weather-replan`, {
+            method: 'POST',
+            headers: { ...authH },
+        });
+        if (!response.ok) {
+            setChatError('Unable to replan around the current forecast.');
+            return;
+        }
+        const data = (await response.json()) as { trip: TripApiResponse; notification: string };
+        const updatedTrip = data.trip;
+        setTripSummary(updatedTrip.summary);
+        setSourceNotes(updatedTrip.data_source_notes);
+        setGeneratedItinerary(updatedTrip.itinerary.map((day) => ({
+            day: day.day,
+            title: day.title,
+            morning: day.morning,
+            afternoon: day.afternoon,
+            evening: day.evening,
+            cost: day.cost,
+        })));
+        setChatMessages((prev) => [...prev, { role: 'assistant', text: data.notification }]);
+        await refreshRevisions(updatedTrip.trip_id);
+    }
+
+    async function discoverIndia() {
+        setDiscovering(true);
+        try {
+            const response = await fetch(`${apiBaseUrl}/destinations/recommend`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    budget,
+                    duration_days: Math.max(itinerary.length, 1),
+                    interests: profile.interests,
+                    month: Number(startDate.slice(5, 7)),
+                }),
+            });
+            if (response.ok) {
+                const data = (await response.json()) as { results: DestinationRecommendation[] };
+                setDestinationRecommendations(data.results);
+            }
+        } finally {
+            setDiscovering(false);
+        }
+    }
+
+    async function compareDestinations() {
+        setComparing(true);
+        try {
+            const response = await fetch(`${apiBaseUrl}/destinations/compare`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    first_destination: compareFirst,
+                    second_destination: compareSecond,
+                    budget: compareBudget,
+                    duration_days: compareDays,
+                }),
+            });
+            if (response.ok) {
+                const data = (await response.json()) as { options: ComparisonOption[] };
+                setComparison(data.options);
+            }
+        } finally {
+            setComparing(false);
+        }
+    }
+
+    async function createGroupPlan() {
+        setGrouping(true);
+        try {
+            const travelers = groupMembers.split('\n').map((line) => {
+                const [name, preference] = line.split(':');
+                return { name: name.trim(), preference: (preference || 'flexible').trim() };
+            }).filter((traveler) => traveler.name);
+            const response = await fetch(`${apiBaseUrl}/destinations/group-plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ destination, budget, duration_days: itinerary.length, travelers }),
+            });
+            if (response.ok) {
+                setGroupPlan((await response.json()) as GroupPlan);
+            }
+        } finally {
+            setGrouping(false);
+        }
+    }
+
+    async function addCategorizedExpense() {
+        if (!tripId || !journalNote.trim() || !journalExpense) {
+            return;
+        }
+        const response = await fetch(`${apiBaseUrl}/trips/${tripId}/expenses`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authH },
+            body: JSON.stringify({ message: `₹${journalExpense} ${journalNote}` }),
+        });
+        if (response.ok) {
+            setJournalNote('');
+            setJournalExpense('');
+            await refreshJournal(tripId);
         }
     }
 
@@ -498,6 +837,27 @@ export default function App() {
             const data = (await response.json()) as ChatApiResponse;
             const tokens = data.stream_tokens?.length ? data.stream_tokens : data.reply.split(' ');
 
+            if (data.trip_update) {
+                const updatedTrip = data.trip_update;
+                setTripId(updatedTrip.trip_id);
+                setTripSummary(updatedTrip.summary);
+                setBudgetBreakdown(updatedTrip.budget_breakdown);
+                setSourceNotes(updatedTrip.data_source_notes);
+                setDisplayDestination(updatedTrip.destination);
+                setDisplayStyle(updatedTrip.style);
+                setDisplayBudget(updatedTrip.budget);
+                setGeneratedItinerary(updatedTrip.itinerary.map((day) => ({
+                    day: day.day,
+                    title: day.title,
+                    morning: day.morning,
+                    afternoon: day.afternoon,
+                    evening: day.evening,
+                    cost: day.cost,
+                })));
+                setSubmitted(true);
+                await refreshRevisions(updatedTrip.trip_id);
+            }
+
             setChatMessages((prev) => [...prev, { role: 'assistant', text: '' }]);
             let partial = '';
             for (const token of tokens) {
@@ -546,11 +906,31 @@ export default function App() {
 
             const uploaded = (await response.json()) as UploadMeta;
             setUploadFiles((prev) => [uploaded, ...prev]);
+            if (tripId) {
+                await refreshJournal(tripId);
+            }
         } catch (uploadError) {
             setUploadError(uploadError instanceof Error ? uploadError.message : 'Upload failed');
         } finally {
             setUploading(false);
             event.target.value = '';
+        }
+    }
+
+    async function analyzeVision() {
+        if (visionFiles.length === 0) {
+            return;
+        }
+        setVisionLoading(true);
+        const formData = new FormData();
+        visionFiles.forEach((file) => formData.append('files', file));
+        formData.append('prompt', visionPrompt);
+        try {
+            const response = await fetch(`${apiBaseUrl}/assistant/vision`, { method: 'POST', body: formData });
+            const data = (await response.json()) as { analysis?: string };
+            setVisionResult(data.analysis ?? 'No visual analysis returned.');
+        } finally {
+            setVisionLoading(false);
         }
     }
 
@@ -641,7 +1021,7 @@ export default function App() {
             <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
                 <header className="site-header travel-hero mb-6 flex flex-col gap-4 rounded-[32px] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur md:flex-row md:items-center md:justify-between">
                     <div className="max-w-2xl">
-                        <p className="text-xs font-semibold uppercase tracking-[0.42em] text-coral">AI Travel Guide</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.42em] text-coral">AI India Travel Guide</p>
                         <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl hero-title md:text-6xl">Plan the trip. Adapt on the road.</h1>
                         <p className="mt-3 max-w-xl text-sm text-slate-100/90 sm:text-base">A concierge-style travel agent that builds itineraries, tracks your budget, and keeps weather and route context in view.</p>
                         <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -713,13 +1093,17 @@ export default function App() {
                         </div>
 
                         <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                            <Field label="Destination" value={destination} onChange={setDestination} placeholder="Paris" list="destinations" />
+                            <Field label="India destination" value={destination} onChange={setDestination} placeholder="Jaipur" list="destinations" />
                             <Field label="Travel style" value={style} onChange={setStyle} placeholder="Balanced" />
                             <Field label="Start date" type="date" value={startDate} onChange={setStartDate} />
                             <Field label="End date" type="date" value={endDate} onChange={setEndDate} />
-                            <Field label="Budget (USD)" type="number" value={String(budget)} onChange={(value) => setBudget(Number(value || 0))} />
+                            <Field label="Budget (INR)" type="number" value={String(budget)} onChange={(value) => setBudget(Number(value || 0))} />
                             <Field label="Interests" value={interests} onChange={setInterests} placeholder="Food, museums, beaches" />
                         </div>
+                        <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                            <input type="checkbox" checked={ecoMode} onChange={(event) => setEcoMode(event.target.checked)} className="h-4 w-4 accent-emerald-600" />
+                            <span><strong>Eco-friendly trip</strong><br /><span className="text-xs">Prioritize trains, public transport, walking, local businesses, and lower-carbon stays.</span></span>
+                        </label>
 
                         <datalist id="destinations">
                             {featuredDestinations.map((item) => (
@@ -728,7 +1112,7 @@ export default function App() {
                         </datalist>
 
                         <div className="mt-6 grid gap-4 md:grid-cols-3">
-                            <InfoCard title="Budget snapshot" value={`$${displayBudget.toLocaleString()}`} description="Suggested total budget" accent="bg-sand" />
+                            <InfoCard title="Budget snapshot" value={`₹${displayBudget.toLocaleString('en-IN')}`} description="Suggested total budget" accent="bg-sand" />
                             <InfoCard title="Trip length" value={`${itinerary.length} days`} description="AI adjusts the plan around dates" accent="bg-skywash" />
                             <InfoCard title="Style" value={displayStyle} description="Used to balance pace and activities" accent="bg-rose-100" />
                         </div>
@@ -753,7 +1137,7 @@ export default function App() {
                                     <h2 className="text-2xl font-bold text-ink">Day-by-day itinerary</h2>
                                     <p className="mt-1 text-sm text-slate-600">Each day stays within the budget envelope and keeps activities nearby.</p>
                                 </div>
-                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">${totalCost.toLocaleString()} estimated</span>
+                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">₹{totalCost.toLocaleString('en-IN')} estimated</span>
                             </div>
                             <div className="mt-5 grid gap-4" role="list" aria-label="Day-by-day itinerary">
                                 {itinerary.map((day, idx) => (
@@ -764,7 +1148,7 @@ export default function App() {
                                                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-coral">Day {day.day}</p>
                                                 <h3 className="mt-1 text-lg font-bold text-ink">{day.title}</h3>
                                             </div>
-                                            <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700">${day.cost}</span>
+                                            <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700">₹{day.cost.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
                                             <MiniBlock label="Morning" text={day.morning} />
@@ -832,23 +1216,86 @@ export default function App() {
                                     </div>
                                 </div>
                             </Panel>
+                            <Panel title="Day 1 interactive route" subtitle="Approximate local travel between stops">
+                                {routeStops.length > 0 ? (
+                                    <div className="grid gap-2">
+                                        {routeStops.map((stop, index) => (
+                                            <div key={`${stop.name}-${index}`} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ink text-xs font-bold text-white">{index + 1}</div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate font-semibold text-ink">{stop.name}</p>
+                                                    <p className="mt-1 text-xs capitalize">{stop.category} · {stop.mode}</p>
+                                                </div>
+                                                {index > 0 ? <span className="whitespace-nowrap text-xs font-semibold text-slate-500">{stop.travel_time_min} min</span> : <span className="text-xs text-slate-400">Start</span>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-600">Generate a plan to calculate approximate stop-to-stop travel times.</p>
+                                )}
+                            </Panel>
                             <Panel title="Budget agent" subtitle="Estimated categories">
-                                <div className="grid gap-2 text-sm text-slate-700">
+                                <div className="grid gap-3 text-sm text-slate-700">
                                     {Object.keys(budgetBreakdown).length > 0 ? (
-                                        Object.entries(budgetBreakdown).map(([key, value]) => (
-                                            <p key={key} className="rounded-2xl bg-slate-50 px-3 py-2 capitalize">
-                                                {key}: ${value.toLocaleString()}
-                                            </p>
-                                        ))
+                                        <>
+                                            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                                                <span className="font-semibold text-ink">Trip budget</span>
+                                                <span className="font-bold text-ink">₹{displayBudget.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="grid gap-2">
+                                                {Object.entries(budgetBreakdown).filter(([key]) => key !== 'remaining').map(([key, value]) => (
+                                                    <p key={key} className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2 capitalize">
+                                                        <span>{key.replace('_', ' ')}</span>
+                                                        <span className="font-semibold">₹{value.toLocaleString('en-IN')}</span>
+                                                    </p>
+                                                ))}
+                                            </div>
+                                            <div className="flex items-center justify-between border-t border-slate-200 pt-3 font-semibold text-emerald-700">
+                                                <span>Remaining</span>
+                                                <span>₹{(budgetBreakdown.remaining ?? 0).toLocaleString('en-IN')}</span>
+                                            </div>
+                                        </>
                                     ) : (
-                                        <p>Lodging 40%, food 25%, activities 20%, transport 15%.</p>
+                                        <p>Generate a plan to split your INR budget across transport, hotels, food, activities, local travel, emergency funds, and remaining cash.</p>
                                     )}
                                 </div>
                             </Panel>
                             <Panel title="Emergency" subtitle="Quick access">
                                 <p className="text-sm text-slate-700">Surface emergency numbers, embassy notes, and safety reminders for the destination.</p>
                             </Panel>
+                            <Panel title="Pre-trip checklist" subtitle={`${checklist.filter((item) => item.checked).length} of ${checklist.length} ready`}>
+                                {checklist.length > 0 ? (
+                                    <div className="grid gap-2">
+                                        {checklist.map((item) => (
+                                            <label key={item.id} className={`flex cursor-pointer items-center gap-3 rounded-2xl px-3 py-3 text-sm transition ${item.checked ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}>
+                                                <input type="checkbox" checked={item.checked} onChange={() => void toggleChecklistItem(item.id)} className="h-4 w-4 accent-emerald-600" />
+                                                <span className={item.checked ? 'line-through opacity-70' : ''}>{item.label}</span>
+                                                <span className="ml-auto text-[10px] uppercase tracking-[0.15em] text-slate-400">{item.category}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-600">Generate or load a trip to prepare your checklist.</p>
+                                )}
+                            </Panel>
                         </div>
+
+                        <Panel title="AI travel journal" subtitle="Notes, expenses, places, and photo memories">
+                            <div className="grid gap-3">
+                                {journalDiary ? <p className="rounded-2xl bg-amber-50 px-3 py-3 text-sm text-amber-900">{journalDiary}</p> : <p className="text-sm text-slate-600">Add your first memory and the diary will grow with your trip.</p>}
+                                <textarea value={journalNote} onChange={(event) => setJournalNote(event.target.value)} placeholder="Write a note about today..." className="min-h-20 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none" />
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <Field label="Place visited" value={journalPlace} onChange={setJournalPlace} placeholder="Amber Fort" />
+                                    <Field label="Expense (INR)" type="number" value={journalExpense} onChange={setJournalExpense} placeholder="450" />
+                                </div>
+                                <button type="button" onClick={() => void addJournalEntry()} disabled={!tripId || !journalNote.trim()} className="w-fit rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Add to journal</button>
+                                {journalEntries.length > 0 ? (
+                                    <div className="grid gap-2 text-sm text-slate-700">
+                                        {journalEntries.slice(-5).reverse().map((entry) => <p key={entry.id} className="rounded-2xl bg-slate-50 px-3 py-2"><span className="font-semibold capitalize">{entry.kind}</span>: {entry.text}{entry.place ? ` · ${entry.place}` : ''}{entry.amount_inr ? ` · ₹${entry.amount_inr.toLocaleString('en-IN')}` : ''}</p>)}
+                                    </div>
+                                ) : null}
+                            </div>
+                        </Panel>
 
                         <Panel title="Travel FAQ" subtitle="RAG-ready knowledge base">
                             <div className="grid gap-3 text-sm text-slate-700">
@@ -877,6 +1324,196 @@ export default function App() {
                                         <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{place.category}</p>
                                     </div>
                                 ))}
+                            </div>
+                        </Panel>
+
+                        <Panel title="Discover India" subtitle="Match a destination to your trip profile">
+                            <div className="space-y-3">
+                                <button type="button" onClick={() => void discoverIndia()} disabled={discovering} className="rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                                    {discovering ? 'Finding matches...' : 'Find my next India trip'}
+                                </button>
+                                {destinationRecommendations.length > 0 ? (
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                        {destinationRecommendations.map((item) => (
+                                            <button key={item.name} type="button" onClick={() => { setDestination(item.name); setMapSearch(item.name); }} className="rounded-2xl bg-slate-50 px-3 py-3 text-left transition hover:bg-slate-100">
+                                                <p className="font-semibold text-ink">{item.name}</p>
+                                                <p className="mt-1 text-xs text-slate-500">{item.region} · {item.best_for.join(' · ')}</p>
+                                                <p className="mt-1 text-xs text-slate-600">Best season: {item.season}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-slate-600">Use your profile interests and trip length to discover an India destination.</p>
+                                )}
+                            </div>
+                        </Panel>
+                        <Panel title="Compare India trips" subtitle="Choose the better fit for the same budget and time">
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <Field label="First destination" value={compareFirst} onChange={setCompareFirst} placeholder="Goa" />
+                                <Field label="Second destination" value={compareSecond} onChange={setCompareSecond} placeholder="Kerala" />
+                                <Field label="Budget (INR)" type="number" value={String(compareBudget)} onChange={(value) => setCompareBudget(Number(value || 0))} />
+                                <Field label="Days" type="number" value={String(compareDays)} onChange={(value) => setCompareDays(Number(value || 1))} />
+                            </div>
+                            <button type="button" onClick={() => void compareDestinations()} disabled={comparing} className="mt-3 rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                                {comparing ? 'Comparing...' : 'Compare plans'}
+                            </button>
+                            {comparison.length > 0 ? (
+                                <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+                                    <table className="min-w-[720px] w-full text-left text-sm text-slate-700">
+                                        <thead className="bg-slate-950 text-white">
+                                            <tr>
+                                                <th className="px-3 py-3 font-semibold">Compare</th>
+                                                {comparison.map((option) => <th key={option.destination} className="px-3 py-3 font-semibold">{option.destination}</th>)}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {[
+                                                ['Estimated cost', (option: ComparisonOption) => `₹${option.estimated_cost.toLocaleString('en-IN')}`],
+                                                ['Travel time', (option: ComparisonOption) => option.travel_time],
+                                                ['Activities', (option: ComparisonOption) => option.activities],
+                                                ['Weather', (option: ComparisonOption) => option.weather],
+                                                ['Food', (option: ComparisonOption) => option.food],
+                                                ['Relaxation', (option: ComparisonOption) => option.relaxation],
+                                            ].map(([label, getValue]) => (
+                                                <tr key={String(label)} className="border-t border-slate-200">
+                                                    <th className="bg-slate-50 px-3 py-3 font-semibold text-ink">{String(label)}</th>
+                                                    {comparison.map((option) => <td key={option.destination} className="px-3 py-3 align-top">{(getValue as (item: ComparisonOption) => string)(option)}</td>)}
+                                                </tr>
+                                            ))}
+                                            <tr className="border-t border-slate-200">
+                                                <th className="bg-slate-50 px-3 py-3 font-semibold text-ink">Choose</th>
+                                                {comparison.map((option) => (
+                                                    <td key={option.destination} className="px-3 py-3 align-top">
+                                                        <button type="button" onClick={() => { setDestination(option.destination); setBudget(compareBudget); setMapSearch(option.destination); }} className="rounded-xl bg-ink px-3 py-2 text-xs font-semibold text-white">Explore {option.destination}</button>
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="mt-3 text-sm text-slate-600">Compare Goa and Kerala, or enter any two Indian destinations.</p>
+                            )}
+                        </Panel>
+
+                        <Panel title="Group travel planner" subtitle="Balance everyone’s budget and preferences">
+                            <div className="grid gap-3">
+                                <textarea value={groupMembers} onChange={(event) => setGroupMembers(event.target.value)} className="min-h-24 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none" />
+                                <button type="button" onClick={() => void createGroupPlan()} disabled={grouping} className="w-fit rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                                    {grouping ? 'Balancing preferences...' : 'Build group plan'}
+                                </button>
+                                {groupPlan ? <div className="grid gap-2 text-sm text-slate-700"><p className="rounded-2xl bg-slate-50 px-3 py-3 font-semibold text-ink">{groupPlan.consensus}</p><ul className="grid gap-2">{groupPlan.plan.map((step) => <li key={step} className="rounded-2xl bg-slate-50 px-3 py-2">{step}</li>)}</ul><p className="text-xs">{groupPlan.budget_strategy}</p></div> : <p className="text-sm text-slate-600">One traveler per line: Name: preference.</p>}
+                            </div>
+                        </Panel>
+
+                        <Panel title="India travel toolkit" subtitle="Hotels, transport, food, and route context">
+                            {travelRecommendations ? (
+                                <div className="grid gap-4 text-sm text-slate-700">
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div>
+                                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Hotels</p>
+                                            <div className="mt-2 grid gap-2">
+                                                {travelRecommendations.hotels.map((hotel) => (
+                                                    <div key={hotel.name} className="rounded-2xl bg-slate-50 px-3 py-3">
+                                                        <p className="font-semibold text-ink">{hotel.name}</p>
+                                                        <p className="mt-1 text-xs">{hotel.area} · {hotel.rating}★ · ₹{hotel.nightly_inr.toLocaleString('en-IN')}/night</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Transport</p>
+                                            <div className="mt-2 grid gap-2">
+                                                {travelRecommendations.transport.map((option) => (
+                                                    <div key={option.mode} className="rounded-2xl bg-slate-50 px-3 py-3">
+                                                        <p className="font-semibold text-ink">{option.mode}</p>
+                                                        <p className="mt-1 text-xs">{option.note} · ₹{option.estimated_inr.toLocaleString('en-IN')} est.</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Restaurants</p>
+                                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                            {travelRecommendations.restaurants.map((restaurant) => (
+                                                <div key={restaurant.name} className="rounded-2xl bg-slate-50 px-3 py-3">
+                                                    <p className="font-semibold text-ink">{restaurant.name}</p>
+                                                    <p className="mt-1 text-xs">{restaurant.cuisine} · {restaurant.price_band} · {restaurant.area}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <p className="rounded-2xl bg-amber-50 px-3 py-3 text-xs text-amber-900">Route tip: {travelRecommendations.route_tip}</p>
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Smart notifications</p>
+                                        <div className="mt-2 grid gap-2">
+                                            {travelRecommendations.notifications.map((notification) => (
+                                                <p key={notification.type} className="rounded-2xl bg-slate-50 px-3 py-2 text-xs">{notification.message}</p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-slate-600">Recommendations will appear after the India travel data loads.</p>
+                            )}
+                        </Panel>
+
+                        <Panel title="Real-time research" subtitle={researchReport ? `Updated ${researchReport.updated_at}` : 'Checking live travel sources'}>
+                            {researchReport ? (
+                                <div className="grid gap-4 text-sm text-slate-700">
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                        {Object.entries(researchReport.providers).map(([key, provider]) => (
+                                            <div key={key} className="rounded-2xl bg-slate-50 px-3 py-3">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <button type="button" onClick={() => void addJournalEntry()} disabled={!tripId || !journalNote.trim()} className="rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Add to journal</button>
+                                                        <button type="button" onClick={() => void addCategorizedExpense()} disabled={!tripId || !journalNote.trim() || !journalExpense} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50">Categorize expense</button>
+                                                    </div>
+                                                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${provider.available ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                        {provider.available ? 'Live' : 'Needs key'}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs">{provider.message}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Live places and hours</p>
+                                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                            {researchReport.attractions_and_restaurants.slice(0, 6).map((place) => (
+                                                <div key={`${place.name}-${place.category}`} className="rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                                                    <p className="font-semibold text-ink">{place.name}</p>
+                                                    <p className="mt-1 text-xs capitalize">{place.category} · {place.opening_hours ?? 'Hours not mapped'}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-slate-500">Sources: {researchReport.source_notes.join(', ')}</p>
+                                    <p className="text-xs text-slate-500">{researchReport.limitations[0]}</p>
+                                    <button type="button" onClick={() => void replanForWeather()} disabled={!tripId} className="w-fit rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+                                        Replan around live weather
+                                    </button>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-slate-600">Live weather, places, opening hours, and provider status are loading.</p>
+                            )}
+                        </Panel>
+
+                        <Panel title="Personal travel profile" subtitle="Preferences the assistant remembers">
+                            <div className="grid gap-3 text-sm text-slate-700">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <Field label="Budget range" value={profile.budget_range} onChange={(value) => setProfile((current) => ({ ...current, budget_range: value }))} placeholder="mid-range" />
+                                    <Field label="Travel style" value={profile.travel_style} onChange={(value) => setProfile((current) => ({ ...current, travel_style: value }))} placeholder="balanced" />
+                                </div>
+                                <Field label="Interests" value={profile.interests.join(', ')} onChange={(value) => setProfile((current) => ({ ...current, interests: value.split(',').map((item) => item.trim()).filter(Boolean) }))} placeholder="food, heritage, nature" />
+                                <Field label="Food preferences" value={profile.food_preferences.join(', ')} onChange={(value) => setProfile((current) => ({ ...current, food_preferences: value.split(',').map((item) => item.trim()).filter(Boolean) }))} placeholder="vegetarian-friendly, spicy" />
+                                <Field label="Preferred transport" value={profile.preferred_transport.join(', ')} onChange={(value) => setProfile((current) => ({ ...current, preferred_transport: value.split(',').map((item) => item.trim()).filter(Boolean) }))} placeholder="train, metro, walking" />
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs text-slate-500">Sign in to persist this profile across trips.</p>
+                                    <button type="button" onClick={() => void saveProfile()} className="rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white">Save profile</button>
+                                </div>
+                                {profileStatus ? <p className="text-xs text-slate-500">{profileStatus}</p> : null}
                             </div>
                         </Panel>
 
@@ -961,6 +1598,15 @@ export default function App() {
                             </div>
                         </Panel>
 
+                        <Panel title="Visual travel agent" subtitle="Compare hotel screenshots or identify monuments">
+                            <div className="grid gap-3">
+                                <input type="file" accept="image/*" multiple onChange={(event) => setVisionFiles(Array.from(event.target.files ?? []))} className="block w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-700" />
+                                <textarea value={visionPrompt} onChange={(event) => setVisionPrompt(event.target.value)} className="min-h-20 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none" />
+                                <button type="button" onClick={() => void analyzeVision()} disabled={visionLoading || visionFiles.length === 0} className="w-fit rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{visionLoading ? 'Analyzing images...' : 'Analyze images'}</button>
+                                {visionResult ? <p className="rounded-2xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-700">{visionResult}</p> : <p className="text-xs text-slate-500">Configure a vision-capable OpenAI or OpenRouter model for live analysis.</p>}
+                            </div>
+                        </Panel>
+
                         <Panel title="Voice assistant" subtitle="Hands-free notes">
                             <div className="rounded-[24px] border border-slate-200 bg-gradient-to-r from-rose-50 via-white to-sky-50 p-4">
                                 <div className="flex items-center justify-between gap-3">
@@ -1008,7 +1654,7 @@ export default function App() {
                                                 <span className="text-xs uppercase tracking-[0.2em] text-slate-400">v{trip.version}</span>
                                             </div>
                                             <p className="mt-1">{trip.summary}</p>
-                                            <p className="mt-2 text-xs text-slate-500">${trip.budget.toLocaleString()} • {trip.style} • updated {new Date(trip.updated_at).toLocaleString()}</p>
+                                            <p className="mt-2 text-xs text-slate-500">₹{trip.budget.toLocaleString('en-IN')} • {trip.style} • updated {new Date(trip.updated_at).toLocaleString()}</p>
                                         </button>
                                     ))
                                 ) : (

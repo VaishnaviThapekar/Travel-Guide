@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import urllib.request
 from datetime import timedelta
 from typing import Any
@@ -17,6 +18,18 @@ class TripPlannerAgent:
             generic = ['Historic center walk', 'Local market', 'Popular viewpoint', 'Relax at a cafe']
             return generic[index % len(generic)]
         return choices[index % len(choices)]
+
+    def _budget_breakdown(self, total: float) -> dict[str, float]:
+        planned_total = round(total * 0.9, 2)
+        return {
+            'transport': round(planned_total * 0.25, 2),
+            'hotels': round(planned_total * 0.28, 2),
+            'food': round(planned_total * 0.17, 2),
+            'activities': round(planned_total * 0.12, 2),
+            'local_travel': round(planned_total * 0.10, 2),
+            'emergency': round(planned_total * 0.08, 2),
+            'remaining': round(total - planned_total, 2),
+        }
 
     def generate(self, request: TripRequest) -> dict[str, Any]:
         total_days = max((request.end_date - request.start_date).days + 1, 1)
@@ -52,13 +65,7 @@ class TripPlannerAgent:
 
         return {
             'summary': f"A {request.style} trip to {request.destination} with {total_days} planned days.",
-            'budget_breakdown': {
-                'lodging': round(request.budget * 0.4, 2),
-                'food': round(request.budget * 0.25, 2),
-                'activities': round(request.budget * 0.2, 2),
-                'transport': round(request.budget * 0.15, 2),
-                'daily_budget': daily_budget,
-            },
+            'budget_breakdown': self._budget_breakdown(request.budget),
             'itinerary': itinerary,
             'data_source_notes': [
                 'Planner workflow: interpret preferences -> budget split -> day-by-day itinerary -> safety notes',
@@ -81,6 +88,172 @@ class TripPlannerAgent:
         if existing_itinerary:
             plan['data_source_notes'].append(f'Previous version had {len(existing_itinerary)} day plans')
         return plan
+
+    def modify_existing_plan(
+        self,
+        message: str,
+        destination: str,
+        style: str,
+        budget: float,
+        existing_itinerary: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Apply a focused natural-language edit without rebuilding unrelated days."""
+        normalized = message.strip().lower()
+        itinerary = [dict(day) for day in existing_itinerary]
+        changes: list[str] = []
+        target_budget = budget
+
+        budget_match = re.search(
+            r'(?:reduce|lower|cut|bring|limit).{0,40}(?:trip|budget)?.{0,20}(?:to|under)\s*(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)\s*(k|thousand)?',
+            normalized,
+        )
+        if budget_match:
+            target_budget = float(budget_match.group(1).replace(',', ''))
+            if budget_match.group(2):
+                target_budget *= 1000
+            if target_budget > 0 and target_budget < budget:
+                daily_budget = round(target_budget / max(len(itinerary), 1), 2)
+                for day in itinerary:
+                    day['cost'] = daily_budget
+                changes.append(f'reduced the trip budget to ₹{target_budget:,.0f} and rebalanced each day')
+
+        if any(term in normalized for term in ('no nightlife', "don't want nightlife", 'remove nightlife', 'without nightlife')):
+            for day in itinerary:
+                day['evening'] = 'Quiet local dinner or an early rest window; no nightlife planned.'
+            changes.append('removed nightlife and replaced evening plans with quieter alternatives')
+
+        if any(term in normalized for term in ('adventurous', 'adventure', 'trekking', 'water sports', 'kayaking')):
+            for index, day in enumerate(itinerary):
+                adventure_options = [
+                    'Early hike or guided nature trail with a recovery break',
+                    'Water sports, kayaking, or an active local experience',
+                    'Sunset viewpoint reached by a scenic walk or cycling route',
+                ]
+                day['afternoon'] = adventure_options[index % len(adventure_options)]
+                day['notes'] = f"Pace: adventurous. Interests: active experiences, nature, and local discovery."
+            changes.append('added active outdoor experiences and adventurous pacing')
+
+        day_match = re.search(r'\bday\s+(\d+)\b', normalized)
+        if day_match and any(term in normalized for term in ('busy', 'tiring', 'slow', 'lighter', 'less')):
+            day_number = int(day_match.group(1))
+            selected = next((day for day in itinerary if day.get('day') == day_number), None)
+            if selected:
+                selected['morning'] = 'Slow breakfast and one nearby anchor activity.'
+                selected['afternoon'] = 'Free time, a short neighborhood walk, or an optional cafe stop.'
+                selected['evening'] = 'Early local dinner and a flexible rest window.'
+                selected['notes'] = 'Pace adjusted: one anchor activity with generous recovery time.'
+                changes.append(f'reorganized Day {day_number} around one anchor activity and more rest')
+
+        if not changes:
+            return {
+                'changed': False,
+                'reply': 'I understood the request, but I need a specific preference or day to change. Try “remove nightlife,” “make it more adventurous,” or “Day 3 is too busy.”',
+                'itinerary': itinerary,
+                'summary': f'A {style} trip to {destination} with the current itinerary preserved.',
+                'budget_breakdown': {},
+                'budget': budget,
+                'data_source_notes': ['No targeted itinerary change matched the request'],
+            }
+
+        return {
+            'changed': True,
+            'reply': f"Updated your existing {destination} plan: {'; '.join(changes)}. Other days were kept intact.",
+            'itinerary': itinerary,
+            'summary': f"A {style} trip to {destination} updated from your request: {'; '.join(changes)}.",
+            'budget': target_budget,
+            'budget_breakdown': self._budget_breakdown(target_budget),
+            'data_source_notes': ['Natural-language edit applied to the existing itinerary', *changes],
+        }
+
+    def apply_disruption(self, message: str, existing_itinerary: list[dict[str, Any]]) -> dict[str, Any]:
+        """Re-sequence impacted activities after a travel disruption."""
+        normalized = message.strip().lower()
+        delay_match = re.search(r'(\d+(?:\.\d+)?)\s*hours?', normalized)
+        delay_hours = float(delay_match.group(1)) if delay_match else 2.0
+        day_match = re.search(r'\bday\s+(\d+)\b', normalized)
+        affected_day = int(day_match.group(1)) if day_match else 1
+        itinerary = [dict(day) for day in existing_itinerary]
+        current_index = next((index for index, day in enumerate(itinerary) if day.get('day') == affected_day), 0)
+        affected = itinerary[current_index] if itinerary else None
+        if affected is None:
+            return {'changed': False, 'reply': 'I need an active itinerary before I can replan around a disruption.'}
+
+        moved_activity = affected.get('afternoon') or affected.get('morning') or 'the affected activity'
+        affected['morning'] = f'Arrival buffer after a {delay_hours:g}-hour delay; check in and recover before sightseeing.'
+        affected['afternoon'] = 'Keep this slot flexible while transport and hotel check-in timing are confirmed.'
+        affected['evening'] = 'Flexible dinner close to the hotel; confirm the reservation after arrival.'
+        affected['notes'] = f'Disruption adjustment: {delay_hours:g}-hour delay accounted for on Day {affected_day}.'
+
+        moved_to_day = None
+        if current_index + 1 < len(itinerary):
+            next_day = itinerary[current_index + 1]
+            next_day['morning'] = f'Rescheduled from Day {affected_day}: {moved_activity}'
+            next_day['notes'] = f'Activity moved here after a {delay_hours:g}-hour travel delay.'
+            moved_to_day = next_day.get('day')
+
+        notification = (
+            f'Your travel is delayed by {delay_hours:g} hours. '
+            f'Day {affected_day} was adjusted for arrival, hotel check-in, and recovery time. '
+            + (f'{moved_activity} moved to Day {moved_to_day}.' if moved_to_day else 'The affected activity remains flexible for a later rebooking.')
+        )
+        return {
+            'changed': True,
+            'reply': notification,
+            'notification': notification,
+            'itinerary': itinerary,
+            'data_source_notes': [
+                'Disruption agent: arrival time -> hotel check-in -> affected activities -> revised itinerary',
+                f'{delay_hours:g}-hour delay applied to Day {affected_day}',
+            ],
+        }
+
+    def apply_weather_replan(self, message: str, existing_itinerary: list[dict[str, Any]]) -> dict[str, Any]:
+        """Move outdoor plans into nearby indoor alternatives for a wet forecast."""
+        normalized = message.strip().lower()
+        day_number = 2 if 'tomorrow' in normalized else 1
+        day_match = re.search(r'\bday\s+(\d+)\b', normalized)
+        if day_match:
+            day_number = int(day_match.group(1))
+
+        itinerary = [dict(day) for day in existing_itinerary]
+        current_index = next((index for index, day in enumerate(itinerary) if day.get('day') == day_number), 0)
+        affected = itinerary[current_index] if itinerary else None
+        if affected is None:
+            return {'changed': False, 'reply': 'I need an active itinerary before I can replan around the weather.'}
+
+        outdoor_plan = affected.get('afternoon') or affected.get('morning') or 'the outdoor activity'
+        affected['morning'] = 'Indoor museum or heritage gallery visit near the hotel.'
+        affected['afternoon'] = 'Cafe break followed by covered market and local shopping.'
+        affected['evening'] = 'Nearby restaurant with a flexible reservation window.'
+        affected['notes'] = 'Weather adjustment: outdoor activity replaced with nearby indoor options.'
+
+        moved_to_day = None
+        for next_index in range(current_index + 1, len(itinerary)):
+            candidate = itinerary[next_index]
+            if 'rain' not in str(candidate).lower() and 'outdoor' in outdoor_plan.lower():
+                candidate['afternoon'] = f'Rescheduled from Day {day_number}: {outdoor_plan}'
+                candidate['notes'] = f'Outdoor activity moved here after the wet-weather forecast on Day {day_number}.'
+                moved_to_day = candidate.get('day')
+                break
+        if moved_to_day is None and current_index + 1 < len(itinerary):
+            itinerary[current_index + 1]['afternoon'] = f'Rescheduled from Day {day_number}: {outdoor_plan}'
+            itinerary[current_index + 1]['notes'] = f'Outdoor activity moved here after the wet-weather forecast on Day {day_number}.'
+            moved_to_day = itinerary[current_index + 1].get('day')
+
+        notification = (
+            f'Heavy rain is expected on Day {day_number}. I moved outdoor plans indoors and added a museum, cafe, and covered shopping route. '
+            + (f'{outdoor_plan} moved to Day {moved_to_day}.' if moved_to_day else 'The outdoor activity remains flexible for a clearer window.')
+        )
+        return {
+            'changed': True,
+            'reply': notification,
+            'notification': notification,
+            'itinerary': itinerary,
+            'data_source_notes': [
+                'Weather agent: forecast conflict -> indoor alternatives -> nearby route -> itinerary revision',
+                f'Heavy rain adjustment applied to Day {day_number}',
+            ],
+        }
 
     def _llm_chat(self, message: str, trip_context: dict[str, Any] | None = None) -> str | None:
         api_key = os.getenv('OPENAI_API_KEY') or os.getenv('OPENROUTER_API_KEY')

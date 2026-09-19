@@ -14,7 +14,7 @@ export default function LandingPage() {
                     <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-500 text-lg font-bold text-white">A</div>
                         <div>
-                            <p className="text-xs uppercase tracking-[0.32em] text-cyan-300">AI Travel</p>
+                            <p className="text-xs uppercase tracking-[0.32em] text-cyan-300">India Travel</p>
                             <p className="text-sm font-semibold text-white">Guide</p>
                         </div>
                     </div>
@@ -40,7 +40,7 @@ export default function LandingPage() {
                             Plan a trip that feels made for you.
                         </h1>
                         <p className="mt-5 max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
-                            Generate itineraries, adjust budgets, discover local gems, and keep every trip organized with an AI travel assistant built for modern explorers.
+                            Plan India around your pace, budget, food preferences, and the places you actually want to experience.
                         </p>
 
                         <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -64,7 +64,7 @@ export default function LandingPage() {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Upcoming trip</p>
-                                    <h2 className="mt-2 text-2xl font-bold text-white">Lisbon</h2>
+                                    <h2 className="mt-2 text-2xl font-bold text-white">Jaipur</h2>
                                 </div>
                                 <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300">Balanced</span>
                             </div>
@@ -72,7 +72,7 @@ export default function LandingPage() {
                             <div className="mt-5 grid gap-3 sm:grid-cols-3">
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                     <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Budget</p>
-                                    <p className="mt-2 text-xl font-bold text-white">$1,200</p>
+                                    <p className="mt-2 text-xl font-bold text-white">₹1,00,000</p>
                                 </div>
                                 <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                     <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Days</p>
@@ -86,9 +86,9 @@ export default function LandingPage() {
 
                             <div className="mt-6 space-y-3">
                                 {[
-                                    { day: 'Day 1', title: 'Old town & sunset views' },
-                                    { day: 'Day 2', title: 'Market + local food walk' },
-                                    { day: 'Day 3', title: 'Art district & scenic tram' },
+                                    { day: 'Day 1', title: 'Amber Fort & old city' },
+                                    { day: 'Day 2', title: 'Bazaar + Rajasthani food walk' },
+                                    { day: 'Day 3', title: 'Palaces & sunset viewpoints' },
                                 ].map((item) => (
                                     <div key={item.day} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
                                         <div>
@@ -105,9 +105,9 @@ export default function LandingPage() {
 
                 <section id="features" className="mt-20 grid gap-5 md:grid-cols-3">
                     {[
-                        { title: 'AI itinerary builder', text: 'Turn your trip goal into a structured day plan grounded in budget, pace, and personal interests.' },
-                        { title: 'Budget-aware planning', text: 'Track estimated costs by category and adjust the itinerary when priorities change.' },
-                        { title: 'Smart companion', text: 'Ask for route changes, restaurant ideas, or local highlights as you plan on the go.' },
+                        { title: 'India itinerary builder', text: 'Turn a city, circuit, or long weekend into a structured plan grounded in pace and local interests.' },
+                        { title: 'Rupee-aware planning', text: 'Track estimated costs in INR and adjust the itinerary when priorities change.' },
+                        { title: 'Local companion', text: 'Ask for route changes, regional food ideas, temple etiquette, or nearby highlights as you travel.' },
                     ].map((feature, index) => (
                         <div key={feature.title} className={`floating-panel reveal-up rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-lg`} style={{ animationDelay: `${index * 120}ms` }}>
                             <div className="mb-4 h-11 w-11 rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-500" />
@@ -122,7 +122,7 @@ export default function LandingPage() {
                     <div className="mt-6 grid gap-6 md:grid-cols-2">
                         <div>
                             <h3 className="text-2xl font-bold text-white">Less planning friction. More time exploring.</h3>
-                            <p className="mt-3 max-w-lg text-slate-300">From destination discovery to budget balancing, the app keeps inspiration and logistics in one place so your trip feels organized without feeling rigid.</p>
+                            <p className="mt-3 max-w-lg text-slate-300">From a first city break to a multi-stop circuit, keep India&apos;s distances, weather, food, and local rhythm in one flexible plan.</p>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
