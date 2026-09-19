@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import useReveal from './hooks/useReveal.tsx';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth, authHeader } from './auth/AuthContext.tsx';
 
 type ItineraryDay = {
@@ -208,6 +208,57 @@ const DESTINATION_IMAGES: Record<string, string> = {
     'Cape Town': new URL('./assets/capetown.svg', import.meta.url).href,
 };
 
+const DESTINATION_GALLERIES: Record<string, string[]> = {
+    Jaipur: [
+        'https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1599661046827-dacde6976549?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1524230507669-5ff97982bb5e?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1532664189809-02133fee698d?auto=format&fit=crop&w=900&q=85',
+    ],
+    Goa: [
+        'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=85',
+    ],
+    Kerala: [
+        'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1596178060810-72c7d4b8f9f4?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?auto=format&fit=crop&w=900&q=85',
+    ],
+    Mumbai: [
+        'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1595658658481-d53d3f999875?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1566552881560-0be862a7c445?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1529253355930-ddbe423a2ac7?auto=format&fit=crop&w=900&q=85',
+    ],
+    Delhi: [
+        'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1592639296346-560c37a0f711?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1609947017136-9daf32a5eb16?auto=format&fit=crop&w=900&q=85',
+        'https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=900&q=85',
+    ],
+};
+
+const SCENIC_FALLBACK = 'https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=900&q=85';
+
+const DAY_FALLBACK_IMAGES = [
+    SCENIC_FALLBACK,
+    'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=900&q=85',
+    'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=900&q=85',
+    'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=900&q=85',
+];
+
+function scenicImageForDay(destination: string, dayIndex: number) {
+    const key = destination.split(',')[0].trim();
+    const gallery = DESTINATION_GALLERIES[key];
+    if (gallery) {
+        return gallery[dayIndex % gallery.length];
+    }
+    return DAY_FALLBACK_IMAGES[dayIndex % DAY_FALLBACK_IMAGES.length];
+}
+
 function buildItinerary(destination: string, budget: number, startDate: string, endDate: string): ItineraryDay[] {
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -227,12 +278,16 @@ function buildItinerary(destination: string, budget: number, startDate: string, 
 export default function App() {
     useReveal();
 
-    const [destination, setDestination] = useState('Jaipur');
+    const location = useLocation();
+    const searchParams = new URLSearchParams(location.search);
+    const initialDestination = searchParams.get('destination')?.trim() || 'Jaipur';
+    const initialInterest = searchParams.get('interest')?.trim() || 'Food, history, viewpoints';
+    const [destination, setDestination] = useState(initialDestination);
     const [startDate, setStartDate] = useState('2026-10-10');
     const [endDate, setEndDate] = useState('2026-10-13');
     const [budget, setBudget] = useState(100000);
     const [style, setStyle] = useState('Balanced');
-    const [interests, setInterests] = useState('Food, history, viewpoints');
+    const [interests, setInterests] = useState(initialInterest);
     const [ecoMode, setEcoMode] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -262,7 +317,7 @@ export default function App() {
     const [groupPlan, setGroupPlan] = useState<GroupPlan | null>(null);
     const [grouping, setGrouping] = useState(false);
     const [researchReport, setResearchReport] = useState<ResearchReport | null>(null);
-    const [mapSearch, setMapSearch] = useState('Jaipur');
+    const [mapSearch, setMapSearch] = useState(initialDestination);
     const [mapEmbedUrl, setMapEmbedUrl] = useState(
         'https://www.openstreetmap.org/export/embed.html?bbox=75.70%2C26.85%2C75.88%2C26.98&layer=mapnik&marker=26.9124%2C75.7873',
     );
@@ -314,9 +369,11 @@ export default function App() {
         void refreshProfile();
         void refreshTravelRecommendations(destination, budget);
         void refreshResearch(destination, startDate, endDate);
+        void refreshMapForDestination(destination);
+        void refreshRoute(destination);
     }, []);
 
-    const displayKey = (displayDestination || destination).split(',')[0].trim();
+    const displayKey = (destination || displayDestination).split(',')[0].trim();
     const destinationImage = DESTINATION_IMAGES[displayKey] ?? DESTINATION_IMAGES['Jaipur'];
 
     async function generatePlan() {
@@ -1142,7 +1199,15 @@ export default function App() {
                             <div className="mt-5 grid gap-4" role="list" aria-label="Day-by-day itinerary">
                                 {itinerary.map((day, idx) => (
                                     <article key={day.day} role="listitem" className="itinerary-card flex gap-3 items-start" style={{ ['--i' as any]: idx }}>
-                                        <img src={destinationImage} alt={displayKey} className="w-28 h-20 rounded-md object-cover flex-shrink-0" />
+                                        <img
+                                            src={scenicImageForDay(destination, idx)}
+                                            alt={`${displayKey} scenic view for day ${day.day}`}
+                                            className="w-28 h-20 rounded-md object-cover flex-shrink-0"
+                                            onError={(event) => {
+                                                event.currentTarget.onerror = null;
+                                                event.currentTarget.src = DAY_FALLBACK_IMAGES[idx % DAY_FALLBACK_IMAGES.length];
+                                            }}
+                                        />
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
                                                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-coral">Day {day.day}</p>

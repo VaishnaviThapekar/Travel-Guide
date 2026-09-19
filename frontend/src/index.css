@@ -347,3 +347,205 @@ body {
     opacity: 1;
     transform: translateY(0);
 }
+
+.discover-page {
+    background: #fbfaf7;
+    font-family: var(--ui-font);
+}
+
+.discover-header a,
+.discover-header button {
+    transition: color 160ms ease, transform 160ms ease, background-color 160ms ease;
+}
+
+.brand-mark {
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: #ef775b;
+    color: #fff;
+    font-size: 1.1rem;
+    transform: rotate(10deg);
+}
+
+.discover-hero {
+    min-height: 430px;
+    background: linear-gradient(110deg, #f8e5d7 0%, #f8eee1 47%, #d9e8e8 100%);
+    box-shadow: 0 22px 60px rgba(58, 70, 78, 0.08);
+}
+
+.discover-hero::after {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 42%;
+    height: 65%;
+    background: url('https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=900&q=80') center/cover;
+    clip-path: ellipse(70% 80% at 80% 70%);
+    content: '';
+    opacity: 0.18;
+    mix-blend-mode: multiply;
+}
+
+.hero-sun,
+.hero-line,
+.hero-stamp {
+    pointer-events: none;
+}
+
+.destination-rail {
+    scrollbar-width: thin;
+    scrollbar-color: #e4dcd4 transparent;
+}
+
+.destination-card {
+    transition: transform 180ms ease;
+}
+
+.destination-card:hover {
+    transform: translateY(-5px);
+}
+
+.category-tile {
+    border: 1px solid rgba(23, 32, 43, 0.06);
+    box-shadow: 0 8px 22px rgba(23, 32, 43, 0.04);
+}
+
+.category-tile.sea {
+    background: #d9eff1;
+}
+
+.category-tile.mint {
+    background: #dfeede;
+}
+
+.category-tile.gold {
+    background: #f6e9c9;
+}
+
+.category-tile.lavender {
+    background: #e9e2f1;
+}
+
+.category-tile.peach {
+    background: #f7ded0;
+}
+
+.category-icon {
+    display: grid;
+    width: 3.3rem;
+    height: 3.3rem;
+    place-items: center;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.58);
+    color: #35545a;
+}
+
+.journey-band {
+    background: #e8f0ee;
+    border: 1px solid rgba(23, 32, 43, 0.05);
+}
+
+@media (max-width: 640px) {
+    .discover-hero {
+        min-height: 500px;
+    }
+
+    .discover-hero::after {
+        width: 100%;
+        height: 38%;
+        opacity: 0.12;
+    }
+}
+
+.auth-page {
+    background: radial-gradient(circle at 12% 10%, rgba(239, 119, 91, 0.12), transparent 28%), #fbfaf7;
+}
+
+.auth-card {
+    border: 1px solid rgba(23, 32, 43, 0.07);
+    box-shadow: 0 24px 70px rgba(23, 32, 43, 0.1);
+}
+
+.auth-art {
+    background: linear-gradient(180deg, rgba(23, 32, 43, 0.04), rgba(23, 32, 43, 0.72)), url('https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=1100&q=85') center/cover;
+}
+
+.auth-art::after {
+    position: absolute;
+    right: -10%;
+    bottom: -12%;
+    width: 70%;
+    height: 48%;
+    border: 28px solid rgba(247, 201, 120, 0.45);
+    border-radius: 50%;
+    content: '';
+}
+
+.auth-label {
+    display: grid;
+    gap: 0.5rem;
+    color: #59616b;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.auth-input {
+    width: 100%;
+    border: 1px solid #dfe3e5;
+    border-radius: 16px;
+    background: #fcfcfb;
+    padding: 0.85rem 1rem;
+    color: #17202b;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.auth-input::placeholder {
+    color: #a2a9ae;
+}
+
+.auth-input:focus {
+    border-color: #ef775b;
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(239, 119, 91, 0.12);
+}
+
+.auth-button {
+    border-radius: 999px;
+    background: #17202b;
+    padding: 0.85rem 1.35rem;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 800;
+    transition: transform 160ms ease, background-color 160ms ease;
+}
+
+.auth-button:hover {
+    background: #ef775b;
+    transform: translateY(-2px);
+}
+
+.auth-error,
+.auth-status {
+    border-radius: 14px;
+    padding: 0.75rem 0.9rem;
+    font-size: 0.82rem;
+}
+
+.auth-error {
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.auth-status {
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+}

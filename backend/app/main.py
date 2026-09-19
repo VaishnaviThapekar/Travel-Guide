@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from .db import SessionLocal, engine
 from .models import Base, Trip, TripRevision, User
@@ -68,10 +68,11 @@ def _ensure_owner_column():
     try:
         with engine.connect() as conn:
             if engine.dialect.name == "sqlite":
-                res = conn.execute("PRAGMA table_info('trips')")
+                res = conn.execute(text("PRAGMA table_info('trips')"))
                 cols = [row[1] for row in res.fetchall()]
                 if 'owner_id' not in cols:
-                    conn.execute("ALTER TABLE trips ADD COLUMN owner_id VARCHAR(36)")
+                    conn.execute(text("ALTER TABLE trips ADD COLUMN owner_id VARCHAR(36)"))
+                    conn.commit()
     except Exception:
         pass
 
@@ -80,10 +81,11 @@ def _ensure_profile_column():
     try:
         with engine.connect() as conn:
             if engine.dialect.name == "sqlite":
-                res = conn.execute("PRAGMA table_info('users')")
+                res = conn.execute(text("PRAGMA table_info('users')"))
                 cols = [row[1] for row in res.fetchall()]
                 if 'profile_json' not in cols:
-                    conn.execute("ALTER TABLE users ADD COLUMN profile_json JSON NOT NULL DEFAULT '{}' ")
+                    conn.execute(text("ALTER TABLE users ADD COLUMN profile_json JSON NOT NULL DEFAULT '{}' "))
+                    conn.commit()
     except Exception:
         pass
 
@@ -92,10 +94,11 @@ def _ensure_checklist_column():
     try:
         with engine.connect() as conn:
             if engine.dialect.name == "sqlite":
-                res = conn.execute("PRAGMA table_info('trips')")
+                res = conn.execute(text("PRAGMA table_info('trips')"))
                 cols = [row[1] for row in res.fetchall()]
                 if 'checklist_json' not in cols:
-                    conn.execute("ALTER TABLE trips ADD COLUMN checklist_json JSON NOT NULL DEFAULT '[]'")
+                    conn.execute(text("ALTER TABLE trips ADD COLUMN checklist_json JSON NOT NULL DEFAULT '[]'"))
+                    conn.commit()
     except Exception:
         pass
 
@@ -104,10 +107,11 @@ def _ensure_journal_column():
     try:
         with engine.connect() as conn:
             if engine.dialect.name == "sqlite":
-                res = conn.execute("PRAGMA table_info('trips')")
+                res = conn.execute(text("PRAGMA table_info('trips')"))
                 cols = [row[1] for row in res.fetchall()]
                 if 'journal_json' not in cols:
-                    conn.execute("ALTER TABLE trips ADD COLUMN journal_json JSON NOT NULL DEFAULT '[]'")
+                    conn.execute(text("ALTER TABLE trips ADD COLUMN journal_json JSON NOT NULL DEFAULT '[]'"))
+                    conn.commit()
     except Exception:
         pass
 

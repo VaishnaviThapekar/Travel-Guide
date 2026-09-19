@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/landingpage.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/auth/authcontext.tsx","./src/auth/forgotpassword.tsx","./src/auth/login.tsx","./src/auth/signup.tsx","./src/hooks/usereveal.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/landingpage.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/auth/authcontext.tsx","./src/auth/authlayout.tsx","./src/auth/forgotpassword.tsx","./src/auth/login.tsx","./src/auth/signup.tsx","./src/hooks/usereveal.tsx"],"version":"5.9.3"}
