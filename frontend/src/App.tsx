@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import useReveal from './hooks/useReveal';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import useReveal from './hooks/useReveal.tsx';
 import { Link } from 'react-router-dom';
 import { useAuth, authHeader } from './auth/AuthContext.tsx';
 
@@ -65,6 +65,29 @@ type FaqApiResponse = {
     }>;
 };
 
+type PlaceApiResponse = {
+    query: string;
+    results: Array<{
+        name: string;
+        category: string;
+        lat?: number;
+        lng?: number;
+    }>;
+    source: string;
+};
+
+type MapApiResponse = {
+    center: { lat: number; lng: number };
+    places: Array<{
+        name: string;
+        category: string;
+        distance_km: number;
+        lat?: number;
+        lng?: number;
+    }>;
+    source: string;
+};
+
 type RevisionApiResponse = {
     version: number;
     note: string;
@@ -76,6 +99,13 @@ type ChatApiResponse = {
     reply: string;
     sources: string[];
     stream_tokens: string[];
+};
+
+type UploadMeta = {
+    file_name: string;
+    file_path: string;
+    content_type: string;
+    size: number;
 };
 
 type ChatMessage = {
@@ -125,6 +155,12 @@ export default function App() {
     const [tripSummary, setTripSummary] = useState('Press Generate plan to create the first itinerary draft. The assistant will explain why each stop was selected and how the budget is distributed.');
     const [budgetBreakdown, setBudgetBreakdown] = useState<Record<string, number>>({});
     const [weather, setWeather] = useState<WeatherApiResponse | null>(null);
+    const [poiResults, setPoiResults] = useState<Array<{ name: string; category: string }>>([]);
+    const [mapPlaces, setMapPlaces] = useState<Array<{ name: string; category: string; distance_km: number }>>([]);
+    const [mapSearch, setMapSearch] = useState('Lisbon');
+    const [mapEmbedUrl, setMapEmbedUrl] = useState(
+        'https://www.openstreetmap.org/export/embed.html?bbox=-9.2209%2C38.6900%2C-9.0400%2C38.7700&layer=mapnik&marker=38.7223%2C-9.1393',
+    );
     const [faqResults, setFaqResults] = useState<FaqApiResponse['results']>([]);
     const [sourceNotes, setSourceNotes] = useState<string[]>(['Mock AI draft']);
     const [tripId, setTripId] = useState('');
@@ -140,6 +176,11 @@ export default function App() {
     ]);
     const [chatStreaming, setChatStreaming] = useState(false);
     const [chatError, setChatError] = useState('');
+    const [uploadFiles, setUploadFiles] = useState<UploadMeta[]>([]);
+    const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState('');
+    const [voiceActive, setVoiceActive] = useState(false);
+    const recognitionRef = useRef<{ stop: () => void } | null>(null);
 
     const authH = authHeader() as Record<string, string>;
 
@@ -211,9 +252,10 @@ export default function App() {
                 })),
             );
 
-            const [weatherResponse, faqResponse] = await Promise.all([
+            const [weatherResponse, faqResponse, placesResponse] = await Promise.all([
                 fetch(`${apiBaseUrl}/weather?city=${encodeURIComponent(tripData.destination)}`),
                 fetch(`${apiBaseUrl}/faq/search?q=${encodeURIComponent(tripData.destination)}`),
+                fetch(`${apiBaseUrl}/places/search?q=${encodeURIComponent(tripData.destination)}`),
             ]);
 
             if (weatherResponse.ok) {
@@ -223,6 +265,29 @@ export default function App() {
             if (faqResponse.ok) {
                 const faqData = (await faqResponse.json()) as FaqApiResponse;
                 setFaqResults(faqData.results);
+            }
+
+            if (placesResponse.ok) {
+                const placesData = (await placesResponse.json()) as PlaceApiResponse;
+                const placeList = (placesData.results ?? []).slice(0, 6).map((place) => ({
+                    name: place.name,
+                    category: place.category,
+                }));
+                setPoiResults(placeList);
+
+                const center = placesData.results?.[0];
+                if (center && typeof center.lat === 'number' && typeof center.lng === 'number') {
+                    const nearbyResponse = await fetch(`${apiBaseUrl}/maps/nearby?lat=${center.lat}&lng=${center.lng}`);
+                    if (nearbyResponse.ok) {
+                        const nearbyData = (await nearbyResponse.json()) as MapApiResponse;
+                        setMapPlaces((nearbyData.places ?? []).slice(0, 3).map((place) => ({
+                            name: place.name,
+                            category: place.category,
+                            distance_km: place.distance_km,
+                        })));
+                    }
+                    await refreshMapForDestination(tripData.destination);
+                }
             }
 
             await refreshSavedTrips(tripData.trip_id);
@@ -245,10 +310,47 @@ export default function App() {
             });
             setSourceNotes(['Mock fallback data']);
             setWeather(null);
+            setPoiResults([]);
+            setMapPlaces([]);
             setFaqResults([]);
         } finally {
             setLoading(false);
         }
+    }
+
+    async function refreshMapForDestination(dest: string) {
+        setMapSearch(dest);
+        try {
+            const response = await fetch(`${apiBaseUrl}/places/search?q=${encodeURIComponent(dest)}`);
+            if (!response.ok) {
+                return;
+            }
+            const data = (await response.json()) as PlaceApiResponse;
+            const firstMatch = data.results?.[0];
+            if (!firstMatch || typeof firstMatch.lat !== 'number' || typeof firstMatch.lng !== 'number') {
+                return;
+            }
+            const minLng = firstMatch.lng - 0.04;
+            const maxLng = firstMatch.lng + 0.04;
+            const minLat = firstMatch.lat - 0.03;
+            const maxLat = firstMatch.lat + 0.03;
+            setMapEmbedUrl(
+                `https://www.openstreetmap.org/export/embed.html?bbox=${minLng}%2C${minLat}%2C${maxLng}%2C${maxLat}&layer=mapnik&marker=${firstMatch.lat}%2C${firstMatch.lng}`,
+            );
+        } catch {
+            setMapEmbedUrl(
+                'https://www.openstreetmap.org/export/embed.html?bbox=-9.2209%2C38.6900%2C-9.0400%2C38.7700&layer=mapnik&marker=38.7223%2C-9.1393',
+            );
+        }
+    }
+
+    async function handleMapSearch() {
+        const trimmed = mapSearch.trim();
+        if (!trimmed) {
+            return;
+        }
+        await refreshMapForDestination(trimmed);
+        setDestination(trimmed);
     }
 
     async function refreshSavedTrips(preferredTripId?: string) {
@@ -369,8 +471,8 @@ export default function App() {
         }
     }
 
-    async function askAssistant() {
-        const text = chatInput.trim();
+    async function askAssistant(providedText?: string) {
+        const text = (providedText ?? chatInput).trim();
         if (!text || chatStreaming) {
             return;
         }
@@ -378,7 +480,9 @@ export default function App() {
         setChatError('');
         setChatStreaming(true);
         setChatMessages((prev) => [...prev, { role: 'user', text }]);
-        setChatInput('');
+        if (!providedText) {
+            setChatInput('');
+        }
 
         try {
             const response = await fetch(`${apiBaseUrl}/assistant/chat`, {
@@ -415,28 +519,160 @@ export default function App() {
         }
     }
 
+    async function uploadFile(event: React.ChangeEvent<HTMLInputElement>) {
+        const file = event.target.files?.[0];
+        if (!file) {
+            return;
+        }
+
+        setUploading(true);
+        setUploadError('');
+        const formData = new FormData();
+        formData.append('file', file);
+        if (tripId) {
+            formData.append('trip_id', tripId);
+        }
+
+        try {
+            const response = await fetch(`${apiBaseUrl}/uploads`, {
+                method: 'POST',
+                headers: { ...authH },
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const uploaded = (await response.json()) as UploadMeta;
+            setUploadFiles((prev) => [uploaded, ...prev]);
+        } catch (uploadError) {
+            setUploadError(uploadError instanceof Error ? uploadError.message : 'Upload failed');
+        } finally {
+            setUploading(false);
+            event.target.value = '';
+        }
+    }
+
+    function toggleVoiceInput() {
+        const recognitionCtor = (window as typeof window & {
+            SpeechRecognition?: new () => {
+                lang: string;
+                continuous: boolean;
+                interimResults: boolean;
+                onstart: (() => void) | null;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence: number }>> }) => void) | null;
+                onend: (() => void) | null;
+                onerror: ((event: { error: string }) => void) | null;
+                start: () => void;
+                stop: () => void;
+            };
+            webkitSpeechRecognition?: new () => {
+                lang: string;
+                continuous: boolean;
+                interimResults: boolean;
+                onstart: (() => void) | null;
+                onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence: number }>> }) => void) | null;
+                onend: (() => void) | null;
+                onerror: ((event: { error: string }) => void) | null;
+                start: () => void;
+                stop: () => void;
+            };
+        }).SpeechRecognition || (window as typeof window & { webkitSpeechRecognition?: new () => { lang: string; continuous: boolean; interimResults: boolean; onstart: (() => void) | null; onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string; confidence: number }>> }) => void) | null; onend: (() => void) | null; onerror: ((event: { error: string }) => void) | null; start: () => void; stop: () => void; } }).webkitSpeechRecognition;
+
+        if (!recognitionCtor) {
+            setChatError('Voice input is not supported in this browser. Try typing your prompt instead.');
+            return;
+        }
+
+        if (voiceActive) {
+            recognitionRef.current?.stop();
+            return;
+        }
+
+        let latestTranscript = '';
+        const recognition = new recognitionCtor();
+        recognitionRef.current = recognition;
+        recognition.lang = 'en-US';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+
+        recognition.onstart = () => setVoiceActive(true);
+        recognition.onresult = (event) => {
+            const transcript = Array.from(event.results)
+                .map((result) => Array.from(result).map((entry) => entry.transcript).join(' '))
+                .join(' ')
+                .trim();
+
+            if (!transcript) {
+                return;
+            }
+
+            latestTranscript = transcript;
+            setChatInput(transcript);
+        };
+        recognition.onend = () => {
+            setVoiceActive(false);
+            recognitionRef.current = null;
+            const spokenText = latestTranscript.trim();
+            if (spokenText) {
+                setChatInput(spokenText);
+                void askAssistant(spokenText);
+            }
+        };
+        recognition.onerror = (event) => {
+            setChatError(`Voice input failed: ${event.error}`);
+            setVoiceActive(false);
+            recognitionRef.current = null;
+        };
+
+        recognition.start();
+        setChatMessages((prev) => [
+            ...prev,
+            {
+                role: 'assistant',
+                text: 'Voice mode is on. Speak naturally and I will turn your request into an assistant prompt.',
+            },
+        ]);
+    }
+
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(251,113,133,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_28%),linear-gradient(180deg,#fffdf7_0%,#f8fafc_55%,#eef2ff_100%)] text-slate-900">
             <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-                <header className="site-header travel-hero mb-6 flex flex-col gap-4 rounded-[28px] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.4em] text-coral">AI Travel Guide</p>
-                        <h1 className="mt-2 text-3xl font-black tracking-tight text-ink sm:text-5xl hero-title">Plan the trip. Adapt on the road.</h1>
-                        <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">A concierge-style travel agent that builds itineraries, checks the budget, and keeps weather and map context in view.</p>
+                <header className="site-header travel-hero mb-6 flex flex-col gap-4 rounded-[32px] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur md:flex-row md:items-center md:justify-between">
+                    <div className="max-w-2xl">
+                        <p className="text-xs font-semibold uppercase tracking-[0.42em] text-coral">AI Travel Guide</p>
+                        <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl hero-title md:text-6xl">Plan the trip. Adapt on the road.</h1>
+                        <p className="mt-3 max-w-xl text-sm text-slate-100/90 sm:text-base">A concierge-style travel agent that builds itineraries, tracks your budget, and keeps weather and route context in view.</p>
+                        <div className="mt-5 flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                className="btn-cta rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5"
+                                onClick={() => void generatePlan()}
+                            >
+                                Generate plan
+                            </button>
+                            <Link to="/login" className="rounded-full border border-white/40 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/15">
+                                View dashboard
+                            </Link>
+                        </div>
                     </div>
-                    <div className="hidden md:block">
-                        <img src={destinationImage} alt="Travel hero" className="w-44 rounded-lg shadow-md object-cover h-28" />
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <AuthControls />
-                        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                            <Badge label="Maps" value="Live-ready" />
-                            <Badge label="Weather" value="Contextual" />
-                            <Badge label="Budget" value="Tracked" />
-                            <Badge label="Trips" value="Saved" />
+                    <div className="flex flex-col items-end gap-4">
+                        <div className="hidden rounded-[24px] border border-white/30 bg-white/10 p-2 shadow-lg shadow-slate-900/10 backdrop-blur-sm md:block">
+                            <img src={destinationImage} alt="Travel hero" className="h-28 w-44 rounded-[18px] object-cover shadow-md" />
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <AuthControls />
                         </div>
                     </div>
                 </header>
+
+                <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <Badge label="Maps" value="Live-ready" />
+                    <Badge label="Weather" value="Contextual" />
+                    <Badge label="Budget" value="Tracked" />
+                    <Badge label="Trips" value="Saved" />
+                </div>
 
                 <main className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
                     <section className="rounded-[32px] border border-slate-200/70 bg-white/85 p-6 shadow-glow backdrop-blur">
@@ -456,9 +692,9 @@ export default function App() {
                             </button>
                         </div>
 
-                        <div className="mt-4 flex flex-wrap gap-3">
+                        <div className="action-row mt-4 flex flex-wrap gap-3">
                             <button
-                                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                                className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50"
                                 onClick={() => void refreshSavedTrips(tripId || undefined)}
                                 type="button"
                                 aria-label="Refresh saved trips"
@@ -466,7 +702,7 @@ export default function App() {
                                 Refresh saved trips
                             </button>
                             <button
-                                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                                className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 onClick={() => void replanTrip()}
                                 type="button"
                                 aria-label="Replan current trip"
@@ -552,7 +788,49 @@ export default function App() {
                                 </div>
                             </Panel>
                             <Panel title="Map" subtitle="Nearby clustering">
-                                <p className="text-sm text-slate-700">The route clusters the museum, market, and dinner spot within the same transit zone.</p>
+                                <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-slate-50 p-2">
+                                    <div className="mb-3 flex gap-2">
+                                        <input
+                                            aria-label="Search map area"
+                                            value={mapSearch}
+                                            onChange={(event) => setMapSearch(event.target.value)}
+                                            placeholder="Search map area"
+                                            className="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter') {
+                                                    event.preventDefault();
+                                                    void handleMapSearch();
+                                                }
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleMapSearch()}
+                                            className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
+                                        >
+                                            Search
+                                        </button>
+                                    </div>
+                                    <iframe
+                                        title="Destination map"
+                                        src={mapEmbedUrl}
+                                        className="h-48 w-full rounded-[18px] border-0"
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer-when-downgrade"
+                                    />
+                                    <div className="mt-3 grid gap-2 text-xs text-slate-700 sm:grid-cols-3">
+                                        {(mapPlaces.length > 0 ? mapPlaces : [
+                                            { name: 'Museum', category: 'museum', distance_km: 0.8 },
+                                            { name: 'Market', category: 'market', distance_km: 1.2 },
+                                            { name: 'Dinner', category: 'restaurant', distance_km: 0.4 },
+                                        ]).map((place) => (
+                                            <div key={place.name} className="rounded-2xl bg-white/80 px-2 py-2">
+                                                <p className="font-semibold text-slate-800">{place.name}</p>
+                                                <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-slate-500">{place.category} • {place.distance_km} km</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </Panel>
                             <Panel title="Budget agent" subtitle="Estimated categories">
                                 <div className="grid gap-2 text-sm text-slate-700">
@@ -587,7 +865,22 @@ export default function App() {
                             </div>
                         </Panel>
 
-                        <Panel title="AI Assistant Chat" subtitle="Streaming placeholder">
+                        <Panel title="POI highlights" subtitle="Live destinations">
+                            <div className="grid gap-3 text-sm text-slate-700">
+                                {(poiResults.length > 0 ? poiResults : [
+                                    { name: 'Eiffel Tower viewpoint', category: 'landmark' },
+                                    { name: 'Le Marais walk', category: 'neighborhood' },
+                                    { name: 'Cafe and market stop', category: 'food' },
+                                ]).map((place) => (
+                                    <div key={place.name} className="rounded-2xl bg-slate-50 px-3 py-3">
+                                        <p className="font-semibold text-ink">{place.name}</p>
+                                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">{place.category}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </Panel>
+
+                        <Panel title="AI Assistant Chat" subtitle="Voice + text assistant">
                             <div className="space-y-3">
                                 <div
                                     className="max-h-56 space-y-2 overflow-y-auto rounded-2xl bg-slate-50 p-3"
@@ -625,6 +918,14 @@ export default function App() {
                                     />
                                     <button
                                         type="button"
+                                        aria-label={voiceActive ? 'Turn off voice input' : 'Turn on voice input'}
+                                        onClick={toggleVoiceInput}
+                                        className={`rounded-2xl border px-3 py-2 text-sm font-semibold transition ${voiceActive ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                                    >
+                                        {voiceActive ? 'Mic on' : 'Mic'}
+                                    </button>
+                                    <button
+                                        type="button"
                                         aria-label="Send chat message"
                                         onClick={() => void askAssistant()}
                                         disabled={chatStreaming}
@@ -635,6 +936,51 @@ export default function App() {
                                 </div>
 
                                 {chatError ? <p className="text-sm text-rose-600">{chatError}</p> : null}
+                            </div>
+                        </Panel>
+
+                        <Panel title="Travel files" subtitle="Upload itinerary docs">
+                            <div className="space-y-3">
+                                <label className="flex cursor-pointer items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-700">
+                                    <input type="file" className="hidden" onChange={(event) => void uploadFile(event)} />
+                                    {uploading ? 'Uploading...' : 'Choose a file to upload'}
+                                </label>
+                                {uploadError ? <p className="text-sm text-rose-600">{uploadError}</p> : null}
+                                <div className="space-y-2">
+                                    {uploadFiles.length > 0 ? (
+                                        uploadFiles.map((file) => (
+                                            <div key={`${file.file_name}-${file.file_path}`} className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                                <p className="font-semibold text-ink">{file.file_name}</p>
+                                                <p>{file.content_type} • {file.size} bytes</p>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-sm text-slate-600">No files uploaded yet.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </Panel>
+
+                        <Panel title="Voice assistant" subtitle="Hands-free notes">
+                            <div className="rounded-[24px] border border-slate-200 bg-gradient-to-r from-rose-50 via-white to-sky-50 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Travel mode</p>
+                                        <p className="mt-1 text-base font-bold text-ink">{voiceActive ? 'Listening for quick notes' : 'Ready for voice capture'}</p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={toggleVoiceInput}
+                                        className={`rounded-full px-3 py-2 text-sm font-semibold ${voiceActive ? 'bg-rose-500 text-white' : 'bg-slate-900 text-white'}`}
+                                    >
+                                        {voiceActive ? 'Stop' : 'Start'}
+                                    </button>
+                                </div>
+                                <p className="mt-3 text-sm text-slate-700">
+                                    {voiceActive
+                                        ? 'The assistant is ready to capture quick spoken reminders such as “find a quiet cafe nearby” or “add one museum stop.”'
+                                        : 'Use browser speech recognition to capture a request and send it straight to the travel assistant.'}
+                                </p>
                             </div>
                         </Panel>
 

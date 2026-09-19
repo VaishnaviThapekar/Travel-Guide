@@ -1,9 +1,11 @@
+import os
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
@@ -11,6 +13,7 @@ from .db import SessionLocal, engine
 from .models import Base, Trip, TripRevision, User
 from .planner import TripPlannerAgent
 from .catalog import DESTINATION_SUGGESTIONS
+from .travel_api import build_weather_response, nearby_places, search_places
 from .schemas import (
     ChatRequest,
     ChatResponse,
@@ -19,6 +22,7 @@ from .schemas import (
     TripListItem,
     TripRequest,
     TripResponse,
+    UploadMetaResponse,
     UserCreate,
     ForgotPasswordRequest,
     LoginRequest,
@@ -28,6 +32,8 @@ from .auth import hash_password, verify_password, create_access_token, decode_ac
 
 
 planner = TripPlannerAgent()
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 
 
 @asynccontextmanager
@@ -114,39 +120,17 @@ def search_destinations(q: str = "") -> dict[str, list[dict[str, str]]]:
 
 @app.get("/weather")
 def weather(city: str = "") -> dict[str, Any]:
-    return {
-        "city": city,
-        "forecast": [
-            {"day": "Today", "condition": "Partly cloudy", "high_c": 24, "low_c": 17},
-            {"day": "Tomorrow", "condition": "Light rain", "high_c": 22, "low_c": 16},
-        ],
-        "source": "mock",
-    }
+    return build_weather_response(city)
 
 
 @app.get("/maps/nearby")
 def nearby(lat: float, lng: float) -> dict[str, Any]:
-    return {
-        "center": {"lat": lat, "lng": lng},
-        "places": [
-            {"name": "City Museum", "category": "museum", "distance_km": 0.8},
-            {"name": "Old Town Market", "category": "market", "distance_km": 1.2},
-            {"name": "Riverside Cafe", "category": "restaurant", "distance_km": 0.4},
-        ],
-        "source": "mock",
-    }
+    return nearby_places(lat, lng)
 
 
 @app.get("/places/search")
-def search_places(q: str = "") -> dict[str, Any]:
-    key = q.strip().lower()
-    results = []
-    # DESTINATION_SUGGESTIONS keys are like 'Paris', map to lowercase
-    for k, items in DESTINATION_SUGGESTIONS.items():
-        if k.lower().startswith(key) or key == '':
-            for name in items:
-                results.append({"name": name, "category": "poi"})
-    return {"query": q, "results": results, "source": "planner-catalog"}
+def places_search(q: str = "") -> dict[str, Any]:
+    return search_places(q)
 
 
 @app.get("/faq/search")
@@ -249,6 +233,38 @@ def assistant_chat(payload: ChatRequest, current_user: User | None = Depends(_ge
 
         result = planner.chat_reply(payload.message, _serialize_trip_context(trip))
         return ChatResponse(**result)
+
+
+@app.post("/uploads", response_model=UploadMetaResponse)
+async def upload_file(
+    file: UploadFile = File(...),
+    trip_id: str | None = None,
+    current_user: User | None = Depends(_get_current_user_from_auth_header),
+) -> UploadMetaResponse:
+    if trip_id:
+        with SessionLocal() as session:
+            trip = session.get(Trip, trip_id)
+            if trip is None:
+                raise HTTPException(status_code=404, detail="Trip not found")
+            if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
+                raise HTTPException(status_code=403, detail="Forbidden")
+
+    safe_name = os.path.basename(file.filename or "upload.bin")
+    unique_name = f"{uuid4().hex}_{safe_name}"
+    file_path = UPLOAD_DIR / unique_name
+    with file_path.open("wb") as destination:
+        while True:
+            chunk = await file.read(1024 * 64)
+            if not chunk:
+                break
+            destination.write(chunk)
+
+    return UploadMetaResponse(
+        file_name=safe_name,
+        file_path=str(file_path),
+        content_type=file.content_type or "application/octet-stream",
+        size=file_path.stat().st_size,
+    )
 
 
 @app.get("/trips/{trip_id}", response_model=TripResponse)

@@ -32,6 +32,13 @@ class ForgotPasswordRequest(BaseModel):
     email: str
 
 
+class UploadMetaResponse(BaseModel):
+    file_name: str
+    file_path: str
+    content_type: str
+    size: int
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     trip_id: str | None = None
