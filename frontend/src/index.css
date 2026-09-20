@@ -549,3 +549,84 @@ body {
     background: #f0fdf4;
     color: #166534;
 }
+
+.cinematic-hero {
+    background-size: cover;
+    background-position: center;
+    transition: background-image 500ms ease;
+}
+
+.mood-chip {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    background: #fff;
+    padding: 0.55rem 0.8rem;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 800;
+    transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.mood-chip:hover {
+    transform: translateY(-2px);
+    border-color: #ef775b;
+}
+
+.mood-chip-active {
+    border-color: #ef775b;
+    background: #fff0ea;
+    color: #c14e38;
+    box-shadow: 0 5px 14px rgba(239, 119, 91, 0.16);
+}
+
+.trip-pulse {
+    background: linear-gradient(135deg, #17202b, #28535a 55%, #ef775b);
+    box-shadow: 0 20px 45px rgba(23, 32, 43, 0.16);
+}
+
+.timeline-list {
+    padding: 0.25rem 0;
+}
+
+.timeline-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 3.4rem 2.4rem minmax(0, 1fr);
+    align-items: start;
+    gap: 0.65rem;
+    min-height: 4.5rem;
+}
+
+.timeline-time {
+    padding-top: 0.3rem;
+    font-size: 0.72rem;
+    font-weight: 900;
+    color: #64748b;
+}
+
+.timeline-node {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 2.2rem;
+    height: 2.2rem;
+    place-items: center;
+    border: 1px solid #f4c8b8;
+    border-radius: 50%;
+    background: #fff7f2;
+    font-size: 1rem;
+}
+
+.timeline-item:not(.timeline-item-last) .timeline-node::after {
+    position: absolute;
+    top: 2.2rem;
+    left: 50%;
+    width: 2px;
+    height: 2.3rem;
+    background: #f3d3c7;
+    content: '';
+}

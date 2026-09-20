@@ -1,4 +1,28 @@
 DESTINATION_SUGGESTIONS: dict[str, list[str]] = {
+    'Rishikesh': [
+        'Ganga riverside sunrise',
+        'Yoga and wellness session',
+        'River rafting adventure',
+        'Beatles Ashram art walk',
+    ],
+    'Darjeeling': [
+        'Tiger Hill sunrise',
+        'Darjeeling Himalayan Railway',
+        'Tea estate tasting',
+        'Peace Pagoda viewpoint',
+    ],
+    'Pondicherry': [
+        'French Quarter heritage walk',
+        'Promenade sunrise',
+        'Auroville day visit',
+        'South Indian cafe trail',
+    ],
+    'Mysuru': [
+        'Mysore Palace evening lights',
+        'Chamundi Hill viewpoint',
+        'Devaraja Market food walk',
+        'Brindavan Gardens visit',
+    ],
     'Jaipur': [
         'Amber Fort sunrise visit',
         'City Palace and Jantar Mantar',

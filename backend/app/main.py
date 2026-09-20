@@ -175,6 +175,11 @@ def search_destinations(q: str = "") -> dict[str, list[dict[str, str]]]:
         {"name": "Kochi, Kerala", "region": "South India"},
         {"name": "Varanasi, Uttar Pradesh", "region": "North India"},
         {"name": "Udaipur, Rajasthan", "region": "West India"},
+        {"name": "Himachal Pradesh, India", "region": "North India"},
+        {"name": "Mysuru, Karnataka", "region": "South India"},
+        {"name": "Rishikesh, Uttarakhand", "region": "North India"},
+        {"name": "Darjeeling, West Bengal", "region": "East India"},
+        {"name": "Pondicherry, Tamil Nadu", "region": "South India"},
     ]
     query = q.lower().strip()
     results = [item for item in catalogue if query in item["name"].lower()]

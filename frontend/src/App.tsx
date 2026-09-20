@@ -193,7 +193,19 @@ type ChatMessage = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
-const featuredDestinations = ['Jaipur', 'Delhi', 'Mumbai', 'Goa', 'Kochi', 'Varanasi'];
+const featuredDestinations = ['Jaipur', 'Delhi', 'Mumbai', 'Goa', 'Kerala', 'Kochi', 'Varanasi', 'Udaipur', 'Himachal Pradesh', 'Mysuru'];
+
+const travelMoods = [
+    { label: 'Relaxed', icon: '🌊', color: 'sea' },
+    { label: 'Adventurous', icon: '🏔️', color: 'mint' },
+    { label: 'Romantic', icon: '❤️', color: 'rose' },
+    { label: 'Backpacker', icon: '🎒', color: 'gold' },
+    { label: 'Foodie', icon: '🍜', color: 'peach' },
+    { label: 'Culture', icon: '🏛️', color: 'lavender' },
+    { label: 'Luxury', icon: '✨', color: 'sand' },
+    { label: 'Nature', icon: '🌿', color: 'mint' },
+    { label: 'Party', icon: '🎉', color: 'rose' },
+];
 
 const DESTINATION_IMAGES: Record<string, string> = {
     Jaipur: new URL('./assets/india.svg', import.meta.url).href,
@@ -289,6 +301,9 @@ export default function App() {
     const [style, setStyle] = useState('Balanced');
     const [interests, setInterests] = useState(initialInterest);
     const [ecoMode, setEcoMode] = useState(false);
+    const [travelMood, setTravelMood] = useState('Foodie');
+    const [tripPrompt, setTripPrompt] = useState('I have ₹30,000, 5 days, and want food, nature, and a little adventure.');
+    const [buildRequested, setBuildRequested] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -363,6 +378,32 @@ export default function App() {
         { day: 'Today', condition: 'Partly cloudy', high_c: 24, low_c: 17 },
         { day: 'Tomorrow', condition: 'Light rain', high_c: 22, low_c: 16 },
     ];
+    const dailyCost = Math.round(displayBudget / Math.max(itinerary.length, 1));
+    const placesToday = Math.min(6, Math.max(3, itinerary.length + 2));
+    const activeHeroImage = scenicImageForDay(destination, 0);
+
+    function buildTripFromPrompt() {
+        const amount = tripPrompt.match(/₹\s*([\d,]+)/i)?.[1]?.replace(/,/g, '');
+        const days = tripPrompt.match(/(\d+)\s*days?/i)?.[1];
+        const knownDestination = ['Goa', 'Kerala', 'Jaipur', 'Mumbai', 'Delhi', 'Udaipur', 'Mysuru', 'Rishikesh', 'Darjeeling'].find((item) => tripPrompt.toLowerCase().includes(item.toLowerCase()));
+        if (amount) {
+            setBudget(Number(amount));
+        }
+        if (days) {
+            const start = new Date(startDate);
+            const end = new Date(start);
+            end.setDate(start.getDate() + Number(days) - 1);
+            setEndDate(end.toISOString().slice(0, 10));
+        }
+        if (knownDestination) {
+            setDestination(knownDestination);
+            setMapSearch(knownDestination);
+            void refreshMapForDestination(knownDestination);
+            void refreshRoute(knownDestination);
+        }
+        setInterests(`${travelMood}, ${tripPrompt}`);
+        setBuildRequested(true);
+    }
 
     useEffect(() => {
         void refreshSavedTrips();
@@ -372,6 +413,13 @@ export default function App() {
         void refreshMapForDestination(destination);
         void refreshRoute(destination);
     }, []);
+
+    useEffect(() => {
+        if (buildRequested) {
+            setBuildRequested(false);
+            void generatePlan();
+        }
+    }, [buildRequested]);
 
     const displayKey = (destination || displayDestination).split(',')[0].trim();
     const destinationImage = DESTINATION_IMAGES[displayKey] ?? DESTINATION_IMAGES['Jaipur'];
@@ -1076,10 +1124,10 @@ export default function App() {
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(251,113,133,0.18),_transparent_30%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.18),_transparent_28%),linear-gradient(180deg,#fffdf7_0%,#f8fafc_55%,#eef2ff_100%)] text-slate-900">
             <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-                <header className="site-header travel-hero mb-6 flex flex-col gap-4 rounded-[32px] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur md:flex-row md:items-center md:justify-between">
+                <header className="site-header travel-hero cinematic-hero mb-6 flex flex-col gap-4 rounded-[32px] border border-white/70 bg-white/70 p-5 shadow-glow backdrop-blur md:flex-row md:items-center md:justify-between" style={{ backgroundImage: `linear-gradient(90deg, rgba(15,23,42,.8), rgba(15,23,42,.25)), url(${activeHeroImage})` }}>
                     <div className="max-w-2xl">
-                        <p className="text-xs font-semibold uppercase tracking-[0.42em] text-coral">AI India Travel Guide</p>
-                        <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl hero-title md:text-6xl">Plan the trip. Adapt on the road.</h1>
+                        <p className="text-xs font-semibold uppercase tracking-[0.42em] text-coral">{displayKey} · {travelMood} mode</p>
+                        <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl hero-title md:text-6xl">Where do you want to escape to?</h1>
                         <p className="mt-3 max-w-xl text-sm text-slate-100/90 sm:text-base">A concierge-style travel agent that builds itineraries, tracks your budget, and keeps weather and route context in view.</p>
                         <div className="mt-5 flex flex-wrap items-center gap-3">
                             <button
@@ -1087,7 +1135,7 @@ export default function App() {
                                 className="btn-cta rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-slate-900/10 transition hover:-translate-y-0.5"
                                 onClick={() => void generatePlan()}
                             >
-                                Generate plan
+                                ✨ Build My Trip
                             </button>
                             <Link to="/login" className="rounded-full border border-white/40 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/15">
                                 View dashboard
@@ -1149,6 +1197,19 @@ export default function App() {
                             </button>
                         </div>
 
+                        <div className="mt-5 rounded-[24px] bg-[#fff4e9] p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#ef775b]">AI trip builder</p><p className="mt-1 text-sm font-semibold text-ink">Describe the trip in your own words.</p></div>
+                                <button type="button" onClick={buildTripFromPrompt} className="rounded-full bg-[#ef775b] px-4 py-2 text-sm font-bold text-white">✨ Build My Trip</button>
+                            </div>
+                            <textarea value={tripPrompt} onChange={(event) => setTripPrompt(event.target.value)} className="mt-3 min-h-20 w-full rounded-2xl border border-[#f3d4c3] bg-white px-3 py-3 text-sm text-slate-800 outline-none" placeholder="I have ₹25,000, 4 days, travelling with friends..." />
+                        </div>
+
+                        <div className="mt-5">
+                            <div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-[0.2em] text-[#ef775b]">Travel vibe</p><p className="mt-1 text-sm text-slate-600">Choose a feeling and let the itinerary follow it.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{travelMood}</span></div>
+                            <div className="flex gap-2 overflow-x-auto pb-2">{travelMoods.map((mood) => <button type="button" key={mood.label} onClick={() => { setTravelMood(mood.label); setStyle(mood.label); }} className={`mood-chip ${mood.label === travelMood ? 'mood-chip-active' : ''}`}><span>{mood.icon}</span>{mood.label}</button>)}</div>
+                        </div>
+
                         <div className="mt-6 grid gap-4 sm:grid-cols-2">
                             <Field label="India destination" value={destination} onChange={setDestination} placeholder="Jaipur" list="destinations" />
                             <Field label="Travel style" value={style} onChange={setStyle} placeholder="Balanced" />
@@ -1188,6 +1249,11 @@ export default function App() {
                     </section>
 
                     <section className="grid gap-6">
+                        <div className="trip-pulse rounded-[28px] p-5 text-white">
+                            <div className="flex items-center justify-between"><div><p className="text-xs font-black uppercase tracking-[0.25em] text-white/65">AI Trip Pulse</p><h2 className="mt-1 text-xl font-black">{displayKey} today</h2></div><span className="rounded-full bg-white/15 px-3 py-1 text-xs font-bold">{travelMood}</span></div>
+                            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4"><PulseStat icon="☀️" value={`${forecast[0]?.high_c ?? 28}°C`} label="Weather" /><PulseStat icon="🚶" value="Moderate" label="Walking" /><PulseStat icon="💰" value={`₹${dailyCost.toLocaleString('en-IN')}`} label="Per day" /><PulseStat icon="📍" value={`${placesToday} places`} label="Today" /></div>
+                            <p className="mt-4 rounded-2xl bg-white/10 px-3 py-2 text-xs text-white/80">⏱️ 2.5 hrs free · Keep one flexible window for a cafe, shopping, or a spontaneous local stop.</p>
+                        </div>
                         <div className="rounded-[32px] border border-slate-200/70 bg-white/85 p-6 shadow-glow backdrop-blur">
                             <div className="flex items-center justify-between">
                                 <div>
@@ -1215,10 +1281,10 @@ export default function App() {
                                             </div>
                                             <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700">₹{day.cost.toLocaleString('en-IN')}</span>
                                         </div>
-                                        <div className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-3">
-                                            <MiniBlock label="Morning" text={day.morning} />
-                                            <MiniBlock label="Afternoon" text={day.afternoon} />
-                                            <MiniBlock label="Evening" text={day.evening} />
+                                        <div className="mt-4 timeline-list text-sm text-slate-700">
+                                            <TimelineItem time="09:00" icon="✈️" label="Arrival / morning" text={day.morning} />
+                                            <TimelineItem time="13:00" icon="🍜" label="Lunch / afternoon" text={day.afternoon} />
+                                            <TimelineItem time="18:30" icon="🌅" label="Sunset / evening" text={day.evening} last />
                                         </div>
                                     </article>
                                 ))}
@@ -1767,6 +1833,14 @@ function Badge({ label, value }: { label: string; value: string }) {
             <div className="mt-1 text-sm font-bold text-ink">{value}</div>
         </div>
     );
+}
+
+function PulseStat({ icon, value, label }: { icon: string; value: string; label: string }) {
+    return <div className="rounded-2xl bg-white/10 px-3 py-3"><p className="text-lg">{icon}</p><p className="mt-1 text-sm font-black">{value}</p><p className="mt-1 text-[10px] uppercase tracking-[0.15em] text-white/60">{label}</p></div>;
+}
+
+function TimelineItem({ time, icon, label, text, last = false }: { time: string; icon: string; label: string; text: string; last?: boolean }) {
+    return <div className={`timeline-item ${last ? 'timeline-item-last' : ''}`}><div className="timeline-time">{time}</div><div className="timeline-node">{icon}</div><div className="min-w-0 flex-1"><p className="text-xs font-black uppercase tracking-[0.15em] text-coral">{label}</p><p className="mt-1 leading-6">{text}</p></div></div>;
 }
 
 function AuthControls() {
