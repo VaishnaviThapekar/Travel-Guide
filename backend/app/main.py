@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import re
+import hashlib
 import urllib.request
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -38,6 +39,7 @@ from .schemas import (
     UploadMetaResponse,
     UserCreate,
     ForgotPasswordRequest,
+    ResetPasswordRequest,
     LoginRequest,
     TokenResponse,
     DiscoveryRequest,
@@ -116,17 +118,33 @@ def _ensure_journal_column():
         pass
 
 
+def _ensure_reset_columns():
+    try:
+        with engine.connect() as conn:
+            if engine.dialect.name == "sqlite":
+                res = conn.execute(text("PRAGMA table_info('users')"))
+                cols = [row[1] for row in res.fetchall()]
+                if 'reset_nonce' not in cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN reset_nonce VARCHAR(64)"))
+                if 'reset_expires_at' not in cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN reset_expires_at DATETIME"))
+                conn.commit()
+    except Exception:
+        pass
+
+
 _ensure_owner_column()
 _ensure_profile_column()
 _ensure_checklist_column()
 _ensure_journal_column()
+_ensure_reset_columns()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if origin.strip()],
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -224,7 +242,10 @@ def research(destination: str = "Jaipur", start_date: str | None = None, end_dat
         parsed_end = date.fromisoformat(end_date) if end_date else None
     except ValueError as error:
         raise HTTPException(status_code=400, detail="Dates must use YYYY-MM-DD format") from error
-    return build_research_report(destination, parsed_start, parsed_end)
+    try:
+        return build_research_report(destination, parsed_start, parsed_end)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 def _trip_to_response(trip: Trip) -> TripResponse:
@@ -274,11 +295,9 @@ def _trip_to_list_item(trip: Trip) -> TripListItem:
 
 @app.get("/trips", response_model=list[TripListItem])
 def list_trips(current_user: User | None = Depends(_get_current_user_from_auth_header)) -> list[TripListItem]:
+    user = _require_user(current_user)
     with SessionLocal() as session:
-        if current_user:
-            trips = session.scalars(select(Trip).where(Trip.owner_id == current_user.id).order_by(Trip.updated_at.desc())).all()
-        else:
-            trips = session.scalars(select(Trip).order_by(Trip.updated_at.desc())).all()
+        trips = session.scalars(select(Trip).where(Trip.owner_id == user.id).order_by(Trip.updated_at.desc())).all()
         return [_trip_to_list_item(trip) for trip in trips]
 
 
@@ -308,21 +327,53 @@ def login(payload: LoginRequest):
 
 @app.post("/auth/forgot-password")
 def forgot_password(payload: ForgotPasswordRequest):
-    # MVP: mock password reset by returning a one-time token (in real app email this)
+    # In production, deliver this token through a trusted email provider instead of returning it.
     with SessionLocal() as session:
         user = session.scalars(select(User).where(User.email == payload.email)).first()
         if not user:
             # Don't reveal whether email exists
             return {"status": "ok"}
-        reset_token = create_access_token(user.id, expires_delta=timedelta(minutes=30))
-        # In real app, send `reset_token` via email. For MVP return token in response for developer usage.
+        nonce = uuid4().hex
+        user.reset_nonce = nonce
+        user.reset_expires_at = datetime.utcnow() + timedelta(minutes=30)
+        session.commit()
+        reset_token = create_access_token(user.id, expires_delta=timedelta(minutes=30), token_type="password_reset", nonce=nonce)
+        # Developer-only response until an email provider is configured.
         return {"status": "ok", "reset_token": reset_token}
+
+
+@app.post("/auth/reset-password")
+def reset_password(payload: ResetPasswordRequest):
+    user_id = decode_access_token(payload.token, expected_type="password_reset")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    with SessionLocal() as session:
+        user = session.get(User, user_id)
+        if user is None or not user.reset_nonce or not user.reset_expires_at or user.reset_expires_at < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        if decode_access_token(payload.token, expected_type="password_reset", expected_nonce=user.reset_nonce) != user.id:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        user.hashed_password = hash_password(payload.password)
+        user.reset_nonce = None
+        user.reset_expires_at = None
+        session.commit()
+    return {"status": "ok"}
 
 
 def _require_user(current_user: User | None) -> User:
     if current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     return current_user
+
+
+def _require_owned_trip(session, trip_id: str, current_user: User | None) -> Trip:
+    user = _require_user(current_user)
+    trip = session.get(Trip, trip_id)
+    if trip is None:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    if trip.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return trip
 
 
 @app.get("/profile", response_model=ProfileResponse)
@@ -488,7 +539,7 @@ def assistant_chat(payload: ChatRequest, current_user: User | None = Depends(_ge
             trip = session.get(Trip, payload.trip_id)
             if trip is None:
                 raise HTTPException(status_code=404, detail="Trip not found")
-            if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
+            if current_user is None or trip.owner_id != current_user.id:
                 raise HTTPException(status_code=403, detail="Forbidden")
 
         result = planner.chat_reply(payload.message, _serialize_trip_context(trip))
@@ -572,11 +623,7 @@ async def vision_assistant(files: list[UploadFile] = File(...), prompt: str = "W
 @app.post("/trips/{trip_id}/disrupt")
 def disrupt_trip(trip_id: str, payload: DisruptionRequest, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> dict[str, Any]:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
 
         modification = planner.apply_disruption(payload.message, trip.itinerary_json or [])
         if not modification['changed']:
@@ -605,11 +652,7 @@ def disrupt_trip(trip_id: str, payload: DisruptionRequest, current_user: User | 
 @app.post("/trips/{trip_id}/weather-replan")
 def weather_replan_trip(trip_id: str, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> dict[str, Any]:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
 
         weather_data = build_weather_response(trip.destination)
         forecast = weather_data.get('forecast') or []
@@ -644,28 +687,55 @@ async def upload_file(
     trip_id: str | None = None,
     current_user: User | None = Depends(_get_current_user_from_auth_header),
 ) -> UploadMetaResponse:
+    user = _require_user(current_user)
+    max_upload_size = 10 * 1024 * 1024
+    allowed_types = {'application/pdf', 'text/plain', 'image/jpeg', 'image/png', 'image/webp'}
+    content_type = (file.content_type or '').lower()
+    if content_type not in allowed_types:
+        raise HTTPException(status_code=415, detail="Unsupported file type")
     if trip_id:
         with SessionLocal() as session:
-            trip = session.get(Trip, trip_id)
-            if trip is None:
-                raise HTTPException(status_code=404, detail="Trip not found")
-            if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-                raise HTTPException(status_code=403, detail="Forbidden")
+            _require_owned_trip(session, trip_id, user)
 
-    safe_name = os.path.basename(file.filename or "upload.bin")
-    unique_name = f"{uuid4().hex}_{safe_name}"
+    safe_name = os.path.basename(file.filename or "upload.bin")[:120]
+    unique_name = f"{uuid4().hex}.upload"
     file_path = UPLOAD_DIR / unique_name
+    total_size = 0
+    first_chunk = b''
     with file_path.open("wb") as destination:
         while True:
             chunk = await file.read(1024 * 64)
             if not chunk:
                 break
+            if not first_chunk:
+                first_chunk = chunk[:32]
+            total_size += len(chunk)
+            if total_size > max_upload_size:
+                file_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail="File exceeds the 10 MB limit")
             destination.write(chunk)
+
+    signatures = {
+        'application/pdf': lambda data: data.startswith(b'%PDF-'),
+        'image/jpeg': lambda data: data.startswith(b'\xff\xd8\xff'),
+        'image/png': lambda data: data.startswith(b'\x89PNG\r\n\x1a\n'),
+        'image/webp': lambda data: data.startswith(b'RIFF') and data[8:12] == b'WEBP',
+    }
+    validator = signatures.get(content_type)
+    if validator and not validator(first_chunk):
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=415, detail="File content does not match its type")
+    if content_type == 'text/plain':
+        try:
+            file_path.read_bytes().decode('utf-8')
+        except UnicodeDecodeError as error:
+            file_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=415, detail="Text uploads must be valid UTF-8") from error
 
     if trip_id and (file.content_type or '').startswith('image/'):
         with SessionLocal() as session:
             trip = session.get(Trip, trip_id)
-            if trip is not None:
+            if trip is not None and trip.owner_id == user.id:
                 entries = list(trip.journal_json or [])
                 entries.append({
                     'id': f"journal_{uuid4().hex[:10]}",
@@ -682,30 +752,22 @@ async def upload_file(
     return UploadMetaResponse(
         file_name=safe_name,
         file_path=str(file_path),
-        content_type=file.content_type or "application/octet-stream",
-        size=file_path.stat().st_size,
+        content_type=content_type,
+        size=total_size,
     )
 
 
 @app.get("/trips/{trip_id}", response_model=TripResponse)
 def get_trip(trip_id: str, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> TripResponse:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
         return _trip_to_response(trip)
 
 
 @app.get("/trips/{trip_id}/revisions", response_model=list[RevisionResponse])
 def list_trip_revisions(trip_id: str, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> list[RevisionResponse]:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        _require_owned_trip(session, trip_id, current_user)
         revisions = session.scalars(
             select(TripRevision).where(TripRevision.trip_id == trip_id).order_by(TripRevision.version.desc())
         ).all()
@@ -718,11 +780,7 @@ def list_trip_revisions(trip_id: str, current_user: User | None = Depends(_get_c
 @app.get("/trips/{trip_id}/checklist", response_model=list[ChecklistItem])
 def get_trip_checklist(trip_id: str, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> list[ChecklistItem]:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
         if not trip.checklist_json:
             trip.checklist_json = _build_pre_trip_checklist(trip.destination)
             session.commit()
@@ -732,11 +790,7 @@ def get_trip_checklist(trip_id: str, current_user: User | None = Depends(_get_cu
 @app.patch("/trips/{trip_id}/checklist", response_model=list[ChecklistItem])
 def update_trip_checklist(trip_id: str, payload: ChecklistUpdate, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> list[ChecklistItem]:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
         trip.checklist_json = [item.model_dump() for item in payload.items]
         session.commit()
         return payload.items
@@ -762,11 +816,7 @@ def _journal_diary(entries: list[dict[str, Any]]) -> str:
 @app.get("/trips/{trip_id}/journal")
 def get_trip_journal(trip_id: str, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> dict[str, Any]:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
         entries = [JournalEntry(**entry) for entry in (trip.journal_json or [])]
         return {'entries': entries, 'diary': _journal_diary([entry.model_dump() for entry in entries])}
 
@@ -774,11 +824,7 @@ def get_trip_journal(trip_id: str, current_user: User | None = Depends(_get_curr
 @app.post("/trips/{trip_id}/journal")
 def add_trip_journal_entry(trip_id: str, payload: JournalUpdate, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> dict[str, Any]:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
         entries = [*(trip.journal_json or []), payload.entry.model_dump(mode='json')]
         trip.journal_json = entries
         session.commit()
@@ -810,9 +856,20 @@ def add_trip_expense(trip_id: str, payload: ExpenseRequest, current_user: User |
 
 @app.post("/trips", response_model=TripResponse)
 def create_trip(payload: TripRequest, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> TripResponse:
+    user = _require_user(current_user)
     plan = planner.generate(payload)
     trip_id = f"trip_{uuid4().hex[:10]}"
     with SessionLocal() as session:
+        request_fingerprint = hashlib.sha256(
+            f'{user.id}|{payload.model_dump_json()}'.encode('utf-8')
+        ).hexdigest()
+        for existing in session.scalars(select(Trip).where(Trip.owner_id == user.id).order_by(Trip.created_at.desc())).all():
+            existing_fingerprint = next(
+                (str(revision.payload_json.get('request_fingerprint')) for revision in existing.revisions if revision.version == 1),
+                None,
+            )
+            if existing_fingerprint == request_fingerprint:
+                return _trip_to_response(existing)
         trip = Trip(
             id=trip_id,
             destination=payload.destination,
@@ -827,7 +884,7 @@ def create_trip(payload: TripRequest, current_user: User | None = Depends(_get_c
             itinerary_json=plan["itinerary"],
             data_source_notes_json=plan["data_source_notes"],
             checklist_json=_build_pre_trip_checklist(payload.destination),
-            owner_id=current_user.id if current_user else None,
+            owner_id=user.id,
         )
         session.add(trip)
         session.add(
@@ -835,7 +892,7 @@ def create_trip(payload: TripRequest, current_user: User | None = Depends(_get_c
                 trip_id=trip_id,
                 version=1,
                 note="Initial itinerary generated by planner workflow",
-                payload_json={"request": payload.model_dump(mode="json"), **plan},
+                payload_json={"request": payload.model_dump(mode="json"), "request_fingerprint": request_fingerprint, **plan},
             )
         )
         session.commit()
@@ -846,13 +903,10 @@ def create_trip(payload: TripRequest, current_user: User | None = Depends(_get_c
 @app.patch("/trips/{trip_id}/replan", response_model=TripResponse)
 def replan_trip(trip_id: str, update: ReplanRequest, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> TripResponse:
     with SessionLocal() as session:
-        trip = session.get(Trip, trip_id)
-        if trip is None:
-            raise HTTPException(status_code=404, detail="Trip not found")
-
-        # Only owner may modify a trip that is owned
-        if trip.owner_id and (current_user is None or trip.owner_id != current_user.id):
-            raise HTTPException(status_code=403, detail="Forbidden")
+        trip = _require_owned_trip(session, trip_id, current_user)
+        current_version = max((revision.version for revision in trip.revisions), default=1)
+        if update.expected_version is not None and update.expected_version != current_version:
+            raise HTTPException(status_code=409, detail=f"Trip changed since version {update.expected_version}; reload before replanning")
 
         current_request = TripRequest(
             destination=trip.destination,
@@ -888,3 +942,17 @@ def replan_trip(trip_id: str, update: ReplanRequest, current_user: User | None =
         session.commit()
         session.refresh(trip)
         return _trip_to_response(trip)
+
+
+@app.delete("/trips/{trip_id}", status_code=204)
+def delete_trip(trip_id: str, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> None:
+    with SessionLocal() as session:
+        trip = _require_owned_trip(session, trip_id, current_user)
+        file_paths = [entry.get('file_path') for entry in (trip.journal_json or []) if entry.get('file_path')]
+        session.delete(trip)
+        session.commit()
+    for raw_path in file_paths:
+        if raw_path:
+            path = Path(raw_path)
+            if path.parent == UPLOAD_DIR:
+                path.unlink(missing_ok=True)

@@ -2,7 +2,7 @@ import json
 import os
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from .travel_api import build_weather_response, search_places
@@ -27,7 +27,11 @@ def _geocode(destination: str) -> tuple[float, float] | None:
     result = (payload.get("results") or [None])[0]
     if not result or result.get("latitude") is None or result.get("longitude") is None:
         return None
-    return float(result["latitude"]), float(result["longitude"])
+    latitude = float(result["latitude"])
+    longitude = float(result["longitude"])
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return None
+    return latitude, longitude
 
 
 def _nearby_live_places(lat: float, lng: float) -> list[dict[str, Any]]:
@@ -62,22 +66,22 @@ def _optional_provider_status() -> dict[str, dict[str, Any]]:
         "flights": {
             "available": bool(os.getenv("AMADEUS_CLIENT_ID") and os.getenv("AMADEUS_CLIENT_SECRET")),
             "provider": "Amadeus" if os.getenv("AMADEUS_CLIENT_ID") else None,
-            "message": "Configure Amadeus credentials for live flight availability and fares." if not os.getenv("AMADEUS_CLIENT_ID") else "Provider configured; flight search adapter is ready.",
+            "message": "Configure Amadeus credentials for live flight availability and fares." if not os.getenv("AMADEUS_CLIENT_ID") else "Credentials detected, but live flight search is not queried by this MVP.",
         },
         "trains": {
             "available": bool(os.getenv("INDIAN_RAIL_API_KEY")),
             "provider": "Indian Rail API" if os.getenv("INDIAN_RAIL_API_KEY") else None,
-            "message": "Configure an Indian Rail API key for live train availability." if not os.getenv("INDIAN_RAIL_API_KEY") else "Provider configured; train search adapter is ready.",
+            "message": "Configure an Indian Rail API key for live train availability." if not os.getenv("INDIAN_RAIL_API_KEY") else "Credentials detected, but live train search is not queried by this MVP.",
         },
         "hotels": {
             "available": bool(os.getenv("HOTEL_API_KEY")),
             "provider": "Configured hotel provider" if os.getenv("HOTEL_API_KEY") else None,
-            "message": "Configure a hotel provider key for live rates and availability." if not os.getenv("HOTEL_API_KEY") else "Provider configured; hotel search adapter is ready.",
+            "message": "Configure a hotel provider key for live rates and availability." if not os.getenv("HOTEL_API_KEY") else "Credentials detected, but live hotel rates are not queried by this MVP.",
         },
         "events": {
             "available": bool(os.getenv("TICKETMASTER_API_KEY")),
             "provider": "Ticketmaster" if os.getenv("TICKETMASTER_API_KEY") else None,
-            "message": "Configure a Ticketmaster key for current events." if not os.getenv("TICKETMASTER_API_KEY") else "Provider configured; event search adapter is ready.",
+            "message": "Configure a Ticketmaster key for current events." if not os.getenv("TICKETMASTER_API_KEY") else "Credentials detected, but live event search is not queried by this MVP.",
         },
         "advisories": {
             "available": False,
@@ -89,11 +93,13 @@ def _optional_provider_status() -> dict[str, dict[str, Any]]:
 
 def build_research_report(destination: str, start_date: date | None = None, end_date: date | None = None) -> dict[str, Any]:
     city = destination.strip() or "Jaipur"
+    if start_date and end_date and end_date < start_date:
+        raise ValueError("end_date must be on or after start_date")
     coordinates = _geocode(city)
     weather = build_weather_response(city)
     places = _nearby_live_places(*coordinates) if coordinates else []
     place_search = search_places(city)
-    sources = ["open-meteo", weather.get("source", "fallback")]
+    sources = [weather.get("source", "fallback")]
     if places:
         sources.append("openstreetmap-overpass")
     if place_search.get("source"):
@@ -106,6 +112,8 @@ def build_research_report(destination: str, start_date: date | None = None, end_
             "end": end_date.isoformat() if end_date else None,
         },
         "updated_at": date.today().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "status": "complete" if coordinates and places else "partial",
         "weather": weather,
         "attractions_and_restaurants": places,
         "geocoded_places": place_search.get("results", []),

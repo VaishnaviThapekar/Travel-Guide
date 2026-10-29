@@ -52,6 +52,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    reset_nonce: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reset_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     trips: Mapped[list[Trip]] = relationship(backref='owner', primaryjoin="User.id==Trip.owner_id")

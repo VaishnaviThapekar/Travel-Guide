@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import AuthLayout from './AuthLayout.tsx';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '/api');
 
 export default function ForgotPassword() {
     const [email, setEmail] = useState('');
     const [status, setStatus] = useState<string | null>(null);
+    const [submitting, setSubmitting] = useState(false);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
+        if (submitting) return;
         setStatus(null);
+        setSubmitting(true);
         try {
             const res = await fetch(`${apiBaseUrl}/auth/forgot-password`, {
                 method: 'POST',
@@ -22,6 +25,8 @@ export default function ForgotPassword() {
             console.log('reset token (dev):', data.reset_token);
         } catch (err) {
             setStatus('Unable to request password reset');
+        } finally {
+            setSubmitting(false);
         }
     }
 
@@ -31,7 +36,7 @@ export default function ForgotPassword() {
                 <label className="auth-label">Email<input className="auth-input" placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
                 {status && <div className="auth-status">{status}</div>}
                 <div className="pt-2">
-                    <button className="auth-button w-full" type="submit">Request reset</button>
+                    <button className="auth-button w-full disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={submitting}>{submitting ? 'Requesting...' : 'Request reset'}</button>
                 </div>
             </form>
             <p className="mt-8 text-sm text-[#69727c]">

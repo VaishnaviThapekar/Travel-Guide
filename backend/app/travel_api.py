@@ -2,6 +2,7 @@ import json
 import math
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from typing import Any
 
 from .catalog import DESTINATION_SUGGESTIONS
@@ -47,14 +48,19 @@ def _weather_condition(code: int | str | None) -> str:
 
 
 def _fallback_weather(city: str) -> dict[str, Any]:
+    observed_at = datetime.now(timezone.utc).isoformat()
     return {
         "city": city or "Destination",
+        "resolved_location": None,
+        "timezone": None,
+        "observed_at": observed_at,
         "forecast": [
-            {"day": "Today", "condition": "Partly cloudy", "high_c": 24, "low_c": 17},
-            {"day": "Tomorrow", "condition": "Light rain", "high_c": 22, "low_c": 16},
-            {"day": "Day 3", "condition": "Mild and sunny", "high_c": 26, "low_c": 18},
+            {"date": None, "day": "Today", "condition": "Partly cloudy", "high_c": 24, "low_c": 17},
+            {"date": None, "day": "Tomorrow", "condition": "Light rain", "high_c": 22, "low_c": 16},
+            {"date": None, "day": "Day 3", "condition": "Mild and sunny", "high_c": 26, "low_c": 18},
         ],
         "source": "fallback",
+        "status": "unavailable",
     }
 
 
@@ -81,7 +87,7 @@ def build_weather_response(city: str) -> dict[str, Any]:
     place = results[0]
     lat = place.get("latitude")
     lon = place.get("longitude")
-    if lat is None or lon is None:
+    if not _valid_coordinates(lat, lon):
         return _fallback_weather(city_name)
 
     weather = _fetch_json(
@@ -103,11 +109,11 @@ def build_weather_response(city: str) -> dict[str, Any]:
     codes = daily.get("weather_code") or []
 
     forecast: list[dict[str, Any]] = []
-    labels = ["Today", "Tomorrow", "Day 3"]
     for index, day in enumerate(days[:3]):
         forecast.append(
             {
-                "day": labels[index] if index < len(labels) else f"Day {index + 1}",
+                "date": str(day),
+                "day": f"Day {index + 1}",
                 "condition": _weather_condition(codes[index] if index < len(codes) else None),
                 "high_c": int(round(float(highs[index]))) if index < len(highs) else 24,
                 "low_c": int(round(float(lows[index]))) if index < len(lows) else 17,
@@ -117,8 +123,17 @@ def build_weather_response(city: str) -> dict[str, Any]:
     if forecast:
         return {
             "city": city_name,
+            "resolved_location": {
+                "name": place.get("name") or city_name,
+                "country": place.get("country"),
+                "latitude": float(lat),
+                "longitude": float(lon),
+            },
+            "timezone": weather.get("timezone"),
+            "observed_at": datetime.now(timezone.utc).isoformat(),
             "forecast": forecast,
             "source": "open-meteo",
+            "status": "live_forecast",
         }
     return _fallback_weather(city_name)
 
@@ -138,7 +153,16 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return c
 
 
+def _valid_coordinates(lat: Any, lng: Any) -> bool:
+    try:
+        return -90 <= float(lat) <= 90 and -180 <= float(lng) <= 180
+    except (TypeError, ValueError):
+        return False
+
+
 def nearby_places(lat: float, lng: float) -> dict[str, Any]:
+    if not _valid_coordinates(lat, lng):
+        return {"center": None, "places": [], "source": "unavailable", "status": "invalid_coordinates"}
     overpass_query = (
         "[out:json][timeout:25];"
         "(node[\"amenity\"](around:2000,{lat},{lng});"
@@ -163,7 +187,7 @@ def nearby_places(lat: float, lng: float) -> dict[str, Any]:
         if lat_value is None or lon_value is None:
             lat_value = item.get("center", {}).get("lat")
             lon_value = item.get("center", {}).get("lon")
-        if lat_value is None or lon_value is None:
+        if not _valid_coordinates(lat_value, lon_value):
             continue
         category = tags.get("amenity") or tags.get("tourism") or tags.get("shop") or "landmark"
         places.append(
@@ -177,23 +201,20 @@ def nearby_places(lat: float, lng: float) -> dict[str, Any]:
         )
 
     if places:
-        return {"center": {"lat": lat, "lng": lng}, "places": places, "source": "overpass"}
+        return {"center": {"lat": lat, "lng": lng}, "places": places, "source": "overpass", "status": "live"}
 
     return {
         "center": {"lat": lat, "lng": lng},
-        "places": [
-            {"name": "City Museum", "category": "museum", "distance_km": 0.8, "lat": lat, "lng": lng},
-            {"name": "Old Town Market", "category": "market", "distance_km": 1.2, "lat": lat, "lng": lng},
-            {"name": "Riverside Cafe", "category": "restaurant", "distance_km": 0.4, "lat": lat, "lng": lng},
-        ],
+        "places": [],
         "source": "fallback",
+        "status": "no_results",
     }
 
 
 def search_places(query: str = "") -> dict[str, Any]:
     q = (query or "").strip()
     if not q:
-        return {"query": q, "results": [], "source": "fallback"}
+        return {"query": q, "results": [], "source": "fallback", "status": "empty_query"}
 
     nominatim = _fetch_json(
         "https://nominatim.openstreetmap.org/search",
@@ -207,20 +228,22 @@ def search_places(query: str = "") -> dict[str, Any]:
     )
 
     results: list[dict[str, Any]] = []
-    for item in nominatim[:5]:
+    for item in nominatim[:5] if isinstance(nominatim, list) else []:
         display_name = item.get("display_name") or item.get("name") or q
         category = item.get("type") or "poi"
+        if not _valid_coordinates(item.get("lat"), item.get("lon")):
+            continue
         results.append(
             {
                 "name": display_name.split(",")[0].strip(),
                 "category": category,
-                "lat": float(item.get("lat", 0.0)),
-                "lng": float(item.get("lon", 0.0)),
+                "lat": float(item["lat"]),
+                "lng": float(item["lon"]),
             }
         )
 
     if results:
-        return {"query": q, "results": results, "source": "nominatim"}
+        return {"query": q, "results": results, "source": "nominatim", "status": "live"}
 
     for key, items in DESTINATION_SUGGESTIONS.items():
         if q.lower() in key.lower() or key.lower().startswith(q.lower()):
@@ -228,9 +251,10 @@ def search_places(query: str = "") -> dict[str, Any]:
                 "query": q,
                 "results": [{"name": name, "category": "poi"} for name in items[:5]],
                 "source": "fallback",
+                "status": "estimated_without_coordinates",
             }
 
-    return {"query": q, "results": [], "source": "fallback"}
+    return {"query": q, "results": [], "source": "fallback", "status": "no_results"}
 
 
 def build_route(stops: list[str]) -> dict[str, Any]:

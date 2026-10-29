@@ -19,9 +19,20 @@ class TripPlannerAgent:
             return generic[index % len(generic)]
         return choices[index % len(choices)]
 
-    def _budget_breakdown(self, total: float) -> dict[str, float]:
+    def _suggestions(self, destination: str, count: int) -> list[str]:
+        key = destination.split(',')[0].strip()
+        choices = list(DESTINATION_SUGGESTIONS.get(key, []))
+        if not choices:
+            choices = ['Historic center visit', 'Local market and food stop', 'Museum or gallery', 'Flexible rest window']
+        result = choices[:count]
+        while len(result) < count:
+            result.append(f'Flexible local discovery near {destination} (rest day option)')
+        return result
+
+    def _budget_breakdown(self, total: float, total_days: int) -> dict[str, float]:
         planned_total = round(total * 0.9, 2)
         return {
+            'daily_budget': round(total / max(total_days, 1), 2),
             'transport': round(planned_total * 0.25, 2),
             'hotels': round(planned_total * 0.28, 2),
             'food': round(planned_total * 0.17, 2),
@@ -29,22 +40,53 @@ class TripPlannerAgent:
             'local_travel': round(planned_total * 0.10, 2),
             'emergency': round(planned_total * 0.08, 2),
             'remaining': round(total - planned_total, 2),
+            'estimated_total': round(total, 2),
         }
+
+    def _validate_plan(self, request: TripRequest, plan: dict[str, Any]) -> dict[str, Any]:
+        expected_days = (request.end_date - request.start_date).days + 1
+        itinerary = plan.get('itinerary')
+        if not isinstance(itinerary, list) or len(itinerary) != expected_days:
+            raise ValueError(f'Planner returned {len(itinerary) if isinstance(itinerary, list) else 0} days; expected {expected_days}')
+        seen_places: set[str] = set()
+        total_cost = 0.0
+        for index, day in enumerate(itinerary, start=1):
+            required = ('day', 'date', 'title', 'morning', 'afternoon', 'evening', 'cost')
+            if any(not day.get(field) and field != 'cost' for field in required) or not isinstance(day.get('cost'), (int, float)):
+                raise ValueError(f'Planner returned malformed Day {index}')
+            if day['day'] != index or day['date'] != (request.start_date + timedelta(days=index - 1)).isoformat():
+                raise ValueError(f'Planner returned an invalid date for Day {index}')
+            for field in ('morning_spot', 'afternoon_spot'):
+                place = str(day.get(field, '')).strip().lower()
+                if place and place in seen_places:
+                    day['notes'] = f"{day.get('notes', '')} Duplicate avoided: keep this as a flexible nearby alternative."
+                if place:
+                    seen_places.add(place)
+            total_cost += float(day['cost'])
+        if total_cost > request.budget + 0.01:
+            raise ValueError('Planner estimate exceeds the requested budget')
+        plan['budget_breakdown']['estimated_total'] = round(total_cost, 2)
+        plan['data_source_notes'].append('All prices and availability are planning estimates; verify before booking.')
+        return plan
 
     def generate(self, request: TripRequest) -> dict[str, Any]:
         total_days = max((request.end_date - request.start_date).days + 1, 1)
         daily_budget = round(request.budget / total_days, 2)
         itinerary: list[dict[str, Any]] = []
+        suggestions = self._suggestions(request.destination, total_days * 2)
+        interest_text = ', '.join(request.interests) or 'general highlights'
+        transport_text = ', '.join(request.preferred_transport) or 'walking and local transport'
+        mobility_text = ', '.join(request.mobility_needs) or 'standard walking pace'
 
         for index in range(total_days):
             current_day = request.start_date + timedelta(days=index)
-            morning_spot = self._pick_suggestion(request.destination, index * 2)
-            afternoon_spot = self._pick_suggestion(request.destination, index * 2 + 1)
+            morning_spot = suggestions[index * 2]
+            afternoon_spot = suggestions[index * 2 + 1]
 
-            morning = f"Morning: {morning_spot} — enjoy a focused visit or market stop."
-            afternoon = f"Afternoon: {afternoon_spot} — cluster nearby attractions and include a light meal."
+            morning = f"Morning (09:00-12:00): {morning_spot} — chosen for {interest_text}."
+            afternoon = f"Afternoon (14:00-17:00): {afternoon_spot} — use {transport_text}; allow for {mobility_text}."
             evening = (
-                f"Evening: local restaurant or viewpoint; keep one flexible window for rest or exploration."
+                f"Evening (18:30-20:30): local meal suited to {', '.join(request.food_preferences) or 'your preferences'}; keep a flexible rest window."
             )
 
             itinerary.append(
@@ -59,19 +101,20 @@ class TripPlannerAgent:
                     # Extra structured fields for downstream UX (ignored by existing frontend if absent)
                     'morning_spot': morning_spot,
                     'afternoon_spot': afternoon_spot,
-                    'notes': f"Pace: {request.style}. Interests: {', '.join(request.interests)}",
+                    'notes': f"Pace: {request.style}. Transport: {transport_text}. Mobility: {mobility_text}.",
+                    'rest_day': 'rest' in morning_spot.lower() or 'rest' in afternoon_spot.lower(),
                 }
             )
 
-        return {
+        return self._validate_plan(request, {
             'summary': f"A {request.style} trip to {request.destination} with {total_days} planned days.",
-            'budget_breakdown': self._budget_breakdown(request.budget),
+            'budget_breakdown': self._budget_breakdown(request.budget, total_days),
             'itinerary': itinerary,
             'data_source_notes': [
                 'Planner workflow: interpret preferences -> budget split -> day-by-day itinerary -> safety notes',
                 'Suggestions are rule-based placeholders; replace with live POI data in production',
             ],
-        }
+        })
 
     def replan(self, request: TripRequest, update: ReplanRequest, existing_itinerary: list[dict[str, Any]]) -> dict[str, Any]:
         revised_request = request.model_copy(
@@ -86,7 +129,7 @@ class TripPlannerAgent:
         if update.note:
             plan['data_source_notes'].append(update.note)
         if existing_itinerary:
-            plan['data_source_notes'].append(f'Previous version had {len(existing_itinerary)} day plans')
+            plan['data_source_notes'].append(f'Previous version had {len(existing_itinerary)} day plans; original remains preserved.')
         return plan
 
     def modify_existing_plan(
@@ -121,6 +164,15 @@ class TripPlannerAgent:
             for day in itinerary:
                 day['evening'] = 'Quiet local dinner or an early rest window; no nightlife planned.'
             changes.append('removed nightlife and replaced evening plans with quieter alternatives')
+
+        if any(term in normalized for term in ('remove outdoor', 'no outdoor', 'avoid outdoor', 'indoor activities')):
+            indoor_options = ['Museum or indoor heritage gallery', 'Covered market and cooking experience', 'Cafe, library, or local craft workshop']
+            for index, day in enumerate(itinerary):
+                day['morning'] = f'Morning (09:00-12:00): {indoor_options[index % len(indoor_options)]}.'
+                day['afternoon'] = f'Afternoon (14:00-17:00): {indoor_options[(index + 1) % len(indoor_options)]}; short accessible transfer.'
+                day['evening'] = 'Evening (18:30-20:30): indoor restaurant and flexible rest window.'
+                day['notes'] = 'Outdoor activities removed; indoor alternatives selected.'
+            changes.append('removed outdoor activities and replaced them with indoor alternatives')
 
         if any(term in normalized for term in ('adventurous', 'adventure', 'trekking', 'water sports', 'kayaking')):
             for index, day in enumerate(itinerary):
@@ -161,7 +213,8 @@ class TripPlannerAgent:
             'itinerary': itinerary,
             'summary': f"A {style} trip to {destination} updated from your request: {'; '.join(changes)}.",
             'budget': target_budget,
-            'budget_breakdown': self._budget_breakdown(target_budget),
+            'budget_breakdown': self._budget_breakdown(target_budget, max(len(itinerary), 1)),
+            'validation': {'days': len(itinerary), 'estimated_total': round(sum(float(day.get('cost', 0)) for day in itinerary), 2)},
             'data_source_notes': ['Natural-language edit applied to the existing itinerary', *changes],
         }
 

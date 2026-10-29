@@ -49,7 +49,12 @@ type TripListItem = {
 
 type WeatherApiResponse = {
     city: string;
+    resolved_location?: { name: string; country?: string; latitude: number; longitude: number } | null;
+    timezone?: string | null;
+    observed_at?: string;
+    status?: string;
     forecast: Array<{
+        date?: string | null;
         day: string;
         condition: string;
         high_c: number;
@@ -74,6 +79,7 @@ type PlaceApiResponse = {
         lng?: number;
     }>;
     source: string;
+    status?: string;
 };
 
 type MapApiResponse = {
@@ -86,6 +92,7 @@ type MapApiResponse = {
         lng?: number;
     }>;
     source: string;
+    status?: string;
 };
 
 type TravelProfile = {
@@ -158,6 +165,8 @@ type JournalEntry = {
 
 type ResearchReport = {
     updated_at: string;
+    generated_at?: string;
+    status?: string;
     weather: WeatherApiResponse;
     attractions_and_restaurants: Array<{ name: string; category: string; opening_hours?: string; website?: string; source: string }>;
     providers: Record<string, { available: boolean; provider: string | null; message: string }>;
@@ -191,7 +200,7 @@ type ChatMessage = {
     text: string;
 };
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '/api');
 
 const featuredDestinations = ['Jaipur', 'Delhi', 'Mumbai', 'Goa', 'Kerala', 'Kochi', 'Varanasi', 'Udaipur', 'Himachal Pradesh', 'Mysuru'];
 
@@ -312,6 +321,7 @@ export default function App() {
     const [weather, setWeather] = useState<WeatherApiResponse | null>(null);
     const [poiResults, setPoiResults] = useState<Array<{ name: string; category: string }>>([]);
     const [mapPlaces, setMapPlaces] = useState<Array<{ name: string; category: string; distance_km: number }>>([]);
+    const [mapStatus, setMapStatus] = useState('');
     const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
     const [travelRecommendations, setTravelRecommendations] = useState<TravelRecommendations | null>(null);
     const [destinationRecommendations, setDestinationRecommendations] = useState<DestinationRecommendation[]>([]);
@@ -354,6 +364,7 @@ export default function App() {
     const [uploadFiles, setUploadFiles] = useState<UploadMeta[]>([]);
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState('');
+    const [uploadStatus, setUploadStatus] = useState('');
     const [visionFiles, setVisionFiles] = useState<File[]>([]);
     const [visionPrompt, setVisionPrompt] = useState('Which hotel or monument option fits my itinerary best?');
     const [visionResult, setVisionResult] = useState('');
@@ -378,7 +389,7 @@ export default function App() {
         { day: 'Today', condition: 'Partly cloudy', high_c: 24, low_c: 17 },
         { day: 'Tomorrow', condition: 'Light rain', high_c: 22, low_c: 16 },
     ];
-    const dailyCost = Math.round(displayBudget / Math.max(itinerary.length, 1));
+    const dailyCost = Math.round(totalCost / Math.max(itinerary.length, 1));
     const placesToday = Math.min(6, Math.max(3, itinerary.length + 2));
     const activeHeroImage = scenicImageForDay(destination, 0);
 
@@ -425,6 +436,7 @@ export default function App() {
     const destinationImage = DESTINATION_IMAGES[displayKey] ?? DESTINATION_IMAGES['Jaipur'];
 
     async function generatePlan() {
+        if (loading) return;
         setLoading(true);
         setError('');
 
@@ -514,9 +526,13 @@ export default function App() {
                             category: place.category,
                             distance_km: place.distance_km,
                         })));
+                        setMapStatus(nearbyData.status === 'no_results' ? 'No nearby mapped places found for this location.' : 'Map pins matched to the selected location.');
                     }
                     await refreshMapForDestination(tripData.destination);
                     await refreshRoute(tripData.destination);
+                } else {
+                    setMapPlaces([]);
+                    setMapStatus('No mapped coordinates were returned for this search.');
                 }
             }
 
@@ -555,14 +571,18 @@ export default function App() {
 
     async function refreshMapForDestination(dest: string) {
         setMapSearch(dest);
+        setMapPlaces([]);
+        setMapStatus('Searching map data...');
         try {
             const response = await fetch(`${apiBaseUrl}/places/search?q=${encodeURIComponent(dest)}`);
             if (!response.ok) {
+                setMapStatus('Map search failed. Try the destination name again.');
                 return;
             }
             const data = (await response.json()) as PlaceApiResponse;
             const firstMatch = data.results?.[0];
             if (!firstMatch || typeof firstMatch.lat !== 'number' || typeof firstMatch.lng !== 'number') {
+                setMapStatus('No mapped result with usable coordinates was found.');
                 return;
             }
             const minLng = firstMatch.lng - 0.04;
@@ -572,7 +592,10 @@ export default function App() {
             setMapEmbedUrl(
                 `https://www.openstreetmap.org/export/embed.html?bbox=${minLng}%2C${minLat}%2C${maxLng}%2C${maxLat}&layer=mapnik&marker=${firstMatch.lat}%2C${firstMatch.lng}`,
             );
+            setMapStatus(data.status === 'estimated_without_coordinates' ? 'Showing estimated place names without map pins.' : 'Map centered on the selected result.');
         } catch {
+            setMapPlaces([]);
+            setMapStatus('Map services are unavailable right now.');
             setMapEmbedUrl(
                 'https://www.openstreetmap.org/export/embed.html?bbox=-9.2209%2C38.6900%2C-9.0400%2C38.7700&layer=mapnik&marker=38.7223%2C-9.1393',
             );
@@ -591,6 +614,8 @@ export default function App() {
     async function handleMapSearch() {
         const trimmed = mapSearch.trim();
         if (!trimmed) {
+            setMapPlaces([]);
+            setMapStatus('Enter a destination or place to search.');
             return;
         }
         await refreshMapForDestination(trimmed);
@@ -698,6 +723,17 @@ export default function App() {
         if (response.ok) {
             setResearchReport((await response.json()) as ResearchReport);
         }
+    }
+
+    async function refreshWeatherAndFaq(dest: string) {
+        const [weatherResponse, faqResponse, placesResponse] = await Promise.all([
+            fetch(`${apiBaseUrl}/weather?city=${encodeURIComponent(dest)}`),
+            fetch(`${apiBaseUrl}/faq/search?q=${encodeURIComponent(dest)}`),
+            fetch(`${apiBaseUrl}/places/search?q=${encodeURIComponent(dest)}`),
+        ]);
+        if (weatherResponse.ok) setWeather((await weatherResponse.json()) as WeatherApiResponse);
+        if (faqResponse.ok) setFaqResults(((await faqResponse.json()) as FaqApiResponse).results);
+        if (placesResponse.ok) setPoiResults((((await placesResponse.json()) as PlaceApiResponse).results ?? []).slice(0, 6).map((place) => ({ name: place.name, category: place.category })));
     }
 
     async function replanForWeather() {
@@ -819,6 +855,7 @@ export default function App() {
     }
 
     async function loadTrip(tripIdToLoad: string) {
+        if (loading) return;
         setLoading(true);
         setError('');
         try {
@@ -850,6 +887,26 @@ export default function App() {
                     cost: day.cost,
                 })),
             );
+            setChecklist([]);
+            setJournalEntries([]);
+            setJournalDiary('');
+            setResearchReport(null);
+            setWeather(null);
+            setFaqResults([]);
+            setTravelRecommendations(null);
+            setPoiResults([]);
+            setMapPlaces([]);
+            setRouteStops([]);
+            setMapStatus('Loading selected trip location...');
+            await Promise.all([
+                refreshChecklist(tripData.trip_id),
+                refreshJournal(tripData.trip_id),
+                refreshResearch(tripData.destination, tripData.start_date, tripData.end_date),
+                refreshWeatherAndFaq(tripData.destination),
+                refreshTravelRecommendations(tripData.destination, tripData.budget),
+                refreshMapForDestination(tripData.destination),
+                refreshRoute(tripData.destination),
+            ]);
             setSubmitted(true);
             await refreshRevisions(tripData.trip_id);
         } catch (loadError) {
@@ -992,6 +1049,7 @@ export default function App() {
 
         setUploading(true);
         setUploadError('');
+        setUploadStatus('Uploading...');
         const formData = new FormData();
         formData.append('file', file);
         if (tripId) {
@@ -1011,11 +1069,13 @@ export default function App() {
 
             const uploaded = (await response.json()) as UploadMeta;
             setUploadFiles((prev) => [uploaded, ...prev]);
+            setUploadStatus(`${uploaded.file_name} uploaded successfully.`);
             if (tripId) {
                 await refreshJournal(tripId);
             }
         } catch (uploadError) {
             setUploadError(uploadError instanceof Error ? uploadError.message : 'Upload failed');
+            setUploadStatus('');
         } finally {
             setUploading(false);
             event.target.value = '';
@@ -1299,7 +1359,7 @@ export default function App() {
                                             {day.day}: {day.condition}, {day.high_c}°C / {day.low_c}°C
                                         </p>
                                     ))}
-                                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Source: {weather?.source ?? 'mock'}</p>
+                                    <p className="text-xs text-slate-500">{weather?.status === 'live_forecast' ? 'Verified forecast' : 'Fallback estimate'} · Source: {weather?.source ?? 'unavailable'}{weather?.timezone ? ` · ${weather.timezone}` : ''}{weather?.observed_at ? ` · updated ${new Date(weather.observed_at).toLocaleString()}` : ''}</p>
                                 </div>
                             </Panel>
                             <Panel title="Map" subtitle="Nearby clustering">
@@ -1333,12 +1393,9 @@ export default function App() {
                                         loading="lazy"
                                         referrerPolicy="no-referrer-when-downgrade"
                                     />
+                                    {mapStatus ? <p className="mb-2 text-xs text-slate-500">{mapStatus}</p> : null}
                                     <div className="mt-3 grid gap-2 text-xs text-slate-700 sm:grid-cols-3">
-                                        {(mapPlaces.length > 0 ? mapPlaces : [
-                                            { name: 'Museum', category: 'museum', distance_km: 0.8 },
-                                            { name: 'Market', category: 'market', distance_km: 1.2 },
-                                            { name: 'Dinner', category: 'restaurant', distance_km: 0.4 },
-                                        ]).map((place) => (
+                                        {mapPlaces.map((place) => (
                                             <div key={place.name} className="rounded-2xl bg-white/80 px-2 py-2">
                                                 <p className="font-semibold text-slate-800">{place.name}</p>
                                                 <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-slate-500">{place.category} • {place.distance_km} km</p>
@@ -1590,7 +1647,7 @@ export default function App() {
                             )}
                         </Panel>
 
-                        <Panel title="Real-time research" subtitle={researchReport ? `Updated ${researchReport.updated_at}` : 'Checking live travel sources'}>
+                        <Panel title="Real-time research" subtitle={researchReport ? `${researchReport.status === 'complete' ? 'Complete' : 'Partial'} · Updated ${researchReport.updated_at}` : 'Checking live travel sources'}>
                             {researchReport ? (
                                 <div className="grid gap-4 text-sm text-slate-700">
                                     <div className="grid gap-2 sm:grid-cols-2">
@@ -1620,7 +1677,7 @@ export default function App() {
                                             ))}
                                         </div>
                                     </div>
-                                    <p className="text-xs text-slate-500">Sources: {researchReport.source_notes.join(', ')}</p>
+                                    <p className="text-xs text-slate-500">Sources: {researchReport.source_notes.join(', ')}{researchReport.generated_at ? ` · generated ${new Date(researchReport.generated_at).toLocaleString()}` : ''}</p>
                                     <p className="text-xs text-slate-500">{researchReport.limitations[0]}</p>
                                     <button type="button" onClick={() => void replanForWeather()} disabled={!tripId} className="w-fit rounded-2xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
                                         Replan around live weather
@@ -1713,7 +1770,7 @@ export default function App() {
                                     <input type="file" className="hidden" onChange={(event) => void uploadFile(event)} />
                                     {uploading ? 'Uploading...' : 'Choose a file to upload'}
                                 </label>
-                                {uploadError ? <p className="text-sm text-rose-600">{uploadError}</p> : null}
+                                {uploadError ? <p className="text-sm text-rose-600">{uploadError}</p> : uploadStatus ? <p className="text-sm text-emerald-700">{uploadStatus}</p> : null}
                                 <div className="space-y-2">
                                     {uploadFiles.length > 0 ? (
                                         uploadFiles.map((file) => (

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TripRequest(BaseModel):
@@ -11,16 +11,24 @@ class TripRequest(BaseModel):
     style: str = Field(default='balanced')
     interests: list[str] = Field(default_factory=list)
     food_preferences: list[str] = Field(default_factory=list)
+    preferred_transport: list[str] = Field(default_factory=list)
+    mobility_needs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def validate_dates(self):
+        if self.end_date < self.start_date:
+            raise ValueError('end_date must be on or after start_date')
+        return self
 
 
 class UserCreate(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=8)
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=1)
 
 
 class TokenResponse(BaseModel):
@@ -29,7 +37,12 @@ class TokenResponse(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    email: str
+    email: str = Field(min_length=3)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=20)
+    password: str = Field(min_length=8)
 
 
 class TravelProfile(BaseModel):
@@ -99,6 +112,7 @@ class ReplanRequest(BaseModel):
     interests: list[str] | None = None
     food_preferences: list[str] | None = None
     note: str = 'Preference update'
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 class DisruptionRequest(BaseModel):
