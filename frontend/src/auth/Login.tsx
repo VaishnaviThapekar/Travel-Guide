@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext.tsx';
 import AuthLayout from './AuthLayout.tsx';
 
@@ -46,11 +46,11 @@ export default function Login() {
                 {error && <div className="auth-error">{error}</div>}
                 <div className="flex items-center justify-between gap-3 pt-2">
                     <button className="auth-button disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={submitting}>{submitting ? 'Signing in...' : 'Sign in'}</button>
-                    <a className="text-sm font-semibold text-[#ef775b]" href="/forgot">Forgot password?</a>
+                    <Link className="text-sm font-semibold text-[#ef775b]" to="/forgot">Forgot password?</Link>
                 </div>
             </form>
             <p className="mt-8 text-sm text-[#69727c]">
-                New to Journey? <a href="/signup" className="font-bold text-[#ef775b]">Create an account</a>
+                New to Journey? <Link to="/signup" className="font-bold text-[#ef775b]">Create an account</Link>
             </p>
         </AuthLayout>
     );

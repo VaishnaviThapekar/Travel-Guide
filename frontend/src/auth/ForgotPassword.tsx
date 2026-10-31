@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import AuthLayout from './AuthLayout.tsx';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '/api');
@@ -6,12 +7,14 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '
 export default function ForgotPassword() {
     const [email, setEmail] = useState('');
     const [status, setStatus] = useState<string | null>(null);
+    const [resetToken, setResetToken] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (submitting) return;
         setStatus(null);
+        setResetToken(null);
         setSubmitting(true);
         try {
             const res = await fetch(`${apiBaseUrl}/auth/forgot-password`, {
@@ -22,7 +25,9 @@ export default function ForgotPassword() {
             if (!res.ok) throw new Error('Request failed');
             const data = await res.json();
             setStatus('If that email exists, a reset token was generated (dev mode).');
-            console.log('reset token (dev):', data.reset_token);
+            if (data.reset_token) {
+                setResetToken(data.reset_token);
+            }
         } catch (err) {
             setStatus('Unable to request password reset');
         } finally {
@@ -33,14 +38,35 @@ export default function ForgotPassword() {
     return (
         <AuthLayout eyebrow="Reset access" title="Find your way back" description="Enter your email and we’ll start the reset process for your Journey account.">
             <form onSubmit={handleSubmit} className="space-y-4">
-                <label className="auth-label">Email<input className="auth-input" placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-                {status && <div className="auth-status">{status}</div>}
+                <label className="auth-label">
+                    Email
+                    <input
+                        className="auth-input"
+                        placeholder="you@example.com"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                    />
+                </label>
+                {status && (
+                    <div className="auth-status">
+                        {status}
+                        {resetToken && (
+                            <p className="mt-2 text-xs">
+                                Dev mode: <Link to={`/reset?token=${encodeURIComponent(resetToken)}`} className="font-bold underline text-[#ef775b]">Click here to set a new password</Link>
+                            </p>
+                        )}
+                    </div>
+                )}
                 <div className="pt-2">
-                    <button className="auth-button w-full disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={submitting}>{submitting ? 'Requesting...' : 'Request reset'}</button>
+                    <button className="auth-button w-full disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={submitting}>
+                        {submitting ? 'Requesting...' : 'Request reset'}
+                    </button>
                 </div>
             </form>
             <p className="mt-8 text-sm text-[#69727c]">
-                <a href="/login" className="font-bold text-[#ef775b]">← Back to sign in</a>
+                <Link to="/login" className="font-bold text-[#ef775b]">← Back to sign in</Link>
             </p>
         </AuthLayout>
     );

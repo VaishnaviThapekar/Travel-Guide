@@ -109,7 +109,10 @@ def test_upload_requires_safe_type_and_size_limit():
         headers=headers,
     )
     assert accepted.status_code == 200
-    assert accepted.json()["file_path"].endswith(".upload")
+    file_path = accepted.json()["file_path"]
+    assert file_path.endswith(".upload")
+    if os.path.exists(file_path):
+        os.remove(file_path)
 
 
 def test_goa_replan_preserves_original_revision_and_recalculates_budget():
@@ -194,3 +197,71 @@ def test_profile_persists_after_reauth():
     login = client.post("/auth/login", json={"email": email, "password": password})
     reauth_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     assert client.get("/profile", headers=reauth_headers).json()["profile"] == profile
+
+
+def test_compare_destinations_endpoint():
+    payload = {
+        "first_destination": "Goa",
+        "second_destination": "Kerala",
+        "budget": 30000,
+        "duration_days": 5,
+    }
+    response = client.post("/destinations/compare", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "options" in data
+    assert len(data["options"]) == 2
+    assert data["options"][0]["destination"] == "Goa"
+    assert data["options"][1]["destination"] == "Kerala"
+
+
+def test_eco_recommendations_endpoint():
+    response = client.get("/travel/eco?destination=Jaipur")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["destination"] == "Jaipur"
+    assert data["mode"] == "eco-friendly"
+    assert len(data["priorities"]) >= 3
+
+
+def test_group_plan_endpoint():
+    payload = {
+        "destination": "Goa",
+        "budget": 50000,
+        "duration_days": 4,
+        "travelers": [
+            {"name": "Alice", "preference": "relaxing"},
+            {"name": "Bob", "preference": "adventure"},
+        ],
+    }
+    response = client.post("/destinations/group-plan", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["destination"] == "Goa"
+    assert "Alice" in data["constraints_applied"]
+    assert "Bob" in data["constraints_applied"]
+
+
+def test_add_trip_expense_handles_currency_and_categories():
+    headers = _auth_headers()
+    created = client.post(
+        "/trips",
+        json={"destination": "Jaipur", "start_date": "2026-10-10", "end_date": "2026-10-12", "budget": 10000},
+        headers=headers,
+    )
+    trip_id = created.json()["trip_id"]
+
+    expense_resp = client.post(
+        f"/trips/{trip_id}/expenses",
+        json={"message": "dinner on day 2 ₹850"},
+        headers=headers,
+    )
+    assert expense_resp.status_code == 200
+    res_data = expense_resp.json()
+    assert res_data["category"] == "Food"
+    assert res_data["entry"]["amount_inr"] == 850.0
+
+    journal_resp = client.get(f"/trips/{trip_id}/journal", headers=headers)
+    assert journal_resp.status_code == 200
+    assert len(journal_resp.json()["entries"]) == 1
+    assert journal_resp.json()["entries"][0]["amount_inr"] == 850.0

@@ -1,10 +1,14 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Trip(Base):
@@ -24,8 +28,8 @@ class Trip(Base):
     checklist_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     journal_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     data_source_notes_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
 
     owner_id: Mapped[str | None] = mapped_column(String(36), ForeignKey('users.id'), nullable=True, index=True)
     revisions: Mapped[list['TripRevision']] = relationship(back_populates='trip', cascade='all, delete-orphan', order_by='TripRevision.version')
@@ -39,7 +43,7 @@ class TripRevision(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     note: Mapped[str] = mapped_column(Text, nullable=False)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
     trip: Mapped[Trip] = relationship(back_populates='revisions')
 
@@ -54,6 +58,6 @@ class User(Base):
     profile_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     reset_nonce: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reset_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
     trips: Mapped[list[Trip]] = relationship(backref='owner', primaryjoin="User.id==Trip.owner_id")

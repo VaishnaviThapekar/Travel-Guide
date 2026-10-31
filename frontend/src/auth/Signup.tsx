@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext.tsx';
 import AuthLayout from './AuthLayout.tsx';
 
@@ -49,7 +49,7 @@ export default function Signup() {
                 </div>
             </form>
             <p className="mt-8 text-sm text-[#69727c]">
-                Already have an account? <a href="/login" className="font-bold text-[#ef775b]">Sign in</a>
+                Already have an account? <Link to="/login" className="font-bold text-[#ef775b]">Sign in</Link>
             </p>
         </AuthLayout>
     );

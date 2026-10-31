@@ -1,6 +1,6 @@
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -30,7 +30,7 @@ def create_access_token(
     token_type: str = "access",
     nonce: str | None = None,
 ) -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if expires_delta:
         exp = now + expires_delta
     else:

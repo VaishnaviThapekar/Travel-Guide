@@ -5,7 +5,7 @@ import re
 import hashlib
 import urllib.request
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -48,6 +48,10 @@ from .schemas import (
     TravelProfile,
 )
 from .auth import hash_password, verify_password, create_access_token, decode_access_token
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 planner = TripPlannerAgent()
@@ -335,7 +339,7 @@ def forgot_password(payload: ForgotPasswordRequest):
             return {"status": "ok"}
         nonce = uuid4().hex
         user.reset_nonce = nonce
-        user.reset_expires_at = datetime.utcnow() + timedelta(minutes=30)
+        user.reset_expires_at = _utcnow() + timedelta(minutes=30)
         session.commit()
         reset_token = create_access_token(user.id, expires_delta=timedelta(minutes=30), token_type="password_reset", nonce=nonce)
         # Developer-only response until an email provider is configured.
@@ -349,7 +353,7 @@ def reset_password(payload: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     with SessionLocal() as session:
         user = session.get(User, user_id)
-        if user is None or not user.reset_nonce or not user.reset_expires_at or user.reset_expires_at < datetime.utcnow():
+        if user is None or not user.reset_nonce or not user.reset_expires_at or user.reset_expires_at < _utcnow():
             raise HTTPException(status_code=400, detail="Invalid or expired reset token")
         if decode_access_token(payload.token, expected_type="password_reset", expected_nonce=user.reset_nonce) != user.id:
             raise HTTPException(status_code=400, detail="Invalid or expired reset token")
@@ -438,6 +442,35 @@ def compare_destinations(payload: CompareRequest) -> dict[str, Any]:
             "cost_factor": 0.94,
         },
     }
+    options: list[dict[str, Any]] = []
+    for dest in (payload.first_destination, payload.second_destination):
+        key = dest.strip().lower()
+        profile = profiles.get(key, {
+            "travel_time": "Varies by origin and transport",
+            "activities": "Local landmarks, food, and neighborhood experiences",
+            "weather": "Check the live destination forecast",
+            "food": "Regional specialties and local markets",
+            "relaxation": "Flexible: tune the itinerary to your pace",
+            "cost_factor": 0.9,
+        })
+        estimated_cost = round(payload.budget * profile["cost_factor"])
+        options.append({
+            "destination": dest.strip().title(),
+            "estimated_cost": estimated_cost,
+            "budget_fit": estimated_cost <= payload.budget,
+            "travel_time": profile["travel_time"],
+            "activities": profile["activities"],
+            "weather": profile["weather"],
+            "food": profile["food"],
+            "relaxation": profile["relaxation"],
+        })
+    return {
+        "currency": "INR",
+        "budget": payload.budget,
+        "duration_days": payload.duration_days,
+        "options": options,
+        "note": "Costs are planning estimates; confirm live transport, hotel, and event prices before booking.",
+    }
 
 
 @app.post("/destinations/group-plan")
@@ -473,35 +506,6 @@ def eco_recommendations(destination: str = "Jaipur") -> dict[str, Any]:
             "Lower-carbon activities such as heritage walks, cycling, and nature trails",
         ],
         "hotel_preference": "Look for verified sustainability practices, refill stations, and efficient transit access.",
-    }
-    options: list[dict[str, Any]] = []
-    for destination in (payload.first_destination, payload.second_destination):
-        key = destination.strip().lower()
-        profile = profiles.get(key, {
-            "travel_time": "Varies by origin and transport",
-            "activities": "Local landmarks, food, and neighborhood experiences",
-            "weather": "Check the live destination forecast",
-            "food": "Regional specialties and local markets",
-            "relaxation": "Flexible: tune the itinerary to your pace",
-            "cost_factor": 0.9,
-        })
-        estimated_cost = round(payload.budget * profile["cost_factor"])
-        options.append({
-            "destination": destination.strip().title(),
-            "estimated_cost": estimated_cost,
-            "budget_fit": estimated_cost <= payload.budget,
-            "travel_time": profile["travel_time"],
-            "activities": profile["activities"],
-            "weather": profile["weather"],
-            "food": profile["food"],
-            "relaxation": profile["relaxation"],
-        })
-    return {
-        "currency": "INR",
-        "budget": payload.budget,
-        "duration_days": payload.duration_days,
-        "options": options,
-        "note": "Costs are planning estimates; confirm live transport, hotel, and event prices before booking.",
     }
 
 
@@ -744,7 +748,7 @@ async def upload_file(
                     'amount_inr': None,
                     'place': None,
                     'file_path': str(file_path),
-                    'created_at': datetime.utcnow().isoformat(),
+                    'created_at': _utcnow().isoformat(),
                 })
                 trip.journal_json = entries
                 session.commit()
@@ -833,12 +837,17 @@ def add_trip_journal_entry(trip_id: str, payload: JournalUpdate, current_user: U
 
 @app.post("/trips/{trip_id}/expenses")
 def add_trip_expense(trip_id: str, payload: ExpenseRequest, current_user: User | None = Depends(_get_current_user_from_auth_header)) -> dict[str, Any]:
-    amount_match = re.search(r'(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d+)?)', payload.message.lower())
+    # Prioritize amount following currency symbol (₹, rs, inr), or fall back to any standalone number
+    amount_match = re.search(r'(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)', payload.message.lower())
+    if not amount_match:
+        amount_match = re.search(r'\b([\d,]+(?:\.\d+)?)\b', payload.message)
     if not amount_match:
         raise HTTPException(status_code=400, detail="Include an amount, for example '₹850 dinner'")
     amount = float(amount_match.group(1).replace(',', ''))
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Expense amount must be greater than zero")
     normalized = payload.message.lower()
-    category = 'Food' if any(word in normalized for word in ('food', 'dinner', 'lunch', 'breakfast', 'restaurant', 'chai')) else 'Activities' if any(word in normalized for word in ('museum', 'ticket', 'fort', 'activity')) else 'Local travel' if any(word in normalized for word in ('auto', 'taxi', 'metro', 'train', 'bus')) else 'Other'
+    category = 'Food' if any(word in normalized for word in ('food', 'dinner', 'lunch', 'breakfast', 'restaurant', 'chai', 'cafe', 'snack', 'thali', 'coffee')) else 'Activities' if any(word in normalized for word in ('museum', 'ticket', 'fort', 'activity', 'monument', 'entry', 'safari', 'palace')) else 'Local travel' if any(word in normalized for word in ('auto', 'taxi', 'metro', 'train', 'bus', 'cab', 'uber', 'rickshaw', 'flight')) else 'Other'
     entry = JournalEntry(
         id=f"journal_{uuid4().hex[:10]}",
         kind='expense',
@@ -847,7 +856,7 @@ def add_trip_expense(trip_id: str, payload: ExpenseRequest, current_user: User |
         amount_inr=amount,
         place=None,
         file_path=None,
-        created_at=datetime.utcnow(),
+        created_at=_utcnow(),
     )
     result = add_trip_journal_entry(trip_id, JournalUpdate(entry=entry), current_user)
     result['category'] = category
