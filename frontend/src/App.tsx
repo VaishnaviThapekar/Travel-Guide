@@ -535,6 +535,19 @@ export default function App() {
     }
 
     useEffect(() => {
+        const queryDest = searchParams.get('destination')?.trim();
+        if (queryDest && queryDest.toLowerCase() !== destination.toLowerCase()) {
+            setDestination(queryDest);
+            setDisplayDestination(queryDest);
+            setMapSearch(queryDest);
+            void refreshMapForDestination(queryDest);
+            void refreshRoute(queryDest);
+            void refreshTravelRecommendations(queryDest, budget);
+            void refreshResearch(queryDest, startDate, endDate);
+        }
+    }, [location.search]);
+
+    useEffect(() => {
         if (token) {
             void refreshSavedTrips();
             void refreshProfile();

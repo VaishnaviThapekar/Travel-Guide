@@ -1,70 +1,130 @@
-<!-- markdownlint-disable MD022 MD032 -->
+# Journey AI — Autonomous Global Travel Guide & Multi-Agent Concierge
 
-# India Travel Guide for Tourists
+An intelligent, full-stack travel-planning application that dynamically generates, visualizes, and optimizes custom trip itineraries for **any country or city worldwide**. Powered by an autonomous multi-agent mesh, high-resolution scenery galleries, live currency conversions, verified safety hotlines, and real-time open intel.
 
-An India-first travel-planning app that helps users generate, save, and refine city and circuit itineraries with AI assistance, INR budget logic, weather context, and trip ownership support.
+---
 
-## Included features
-- FastAPI backend with SQLite default storage and PostgreSQL-ready configuration
-- JWT-based signup, login, forgot-password, and protected trip access
-- React + TypeScript + Vite frontend with responsive travel dashboard UI
-- AI trip planning and re-planning flow with saved trip history
-- India destination discovery ranked by budget, duration, interests, and season
-- Persisted personal travel profile for interests, food preferences, style, and transport
-- India travel toolkit with hotel, train/metro, restaurant, route, and notification guidance
-- Real-time research panel for weather, mapped places, opening hours, source freshness, and provider status
-- Multimodal image analysis for hotel comparisons and monument identification
-- Group travel planning with shared constraints and preference tracks
-- Eco-friendly planning mode prioritizing public transport, walking, and local businesses
-- Natural-language expense categorization into the trip journal and budget context
-- Revision tracking and ownership-aware trip access
-- File upload support for itinerary documents and travel notes
-- Live OpenStreetMap search/embed, weather and POI cards, FAQ panel, and browser speech assistant
+## Highlights & Capabilities
 
-## Project structure
-- `backend/` - FastAPI app, DB models, planner logic, auth, and upload endpoints
-- `frontend/` - Vite React app for the travel dashboard and auth flows
-- `AI-Travel-Guide-MVP.md` - product and feature specification
+### 1. Global Country Intelligence Engine
+- **Universal Destination Resolution**: Dynamically resolves 50+ countries and 200+ world cities (Switzerland, Japan, France, Italy, USA, UK, Germany, Spain, UAE, Thailand, Australia, Singapore, Canada, Egypt, Greece, Turkey, Netherlands, Portugal, Austria, New Zealand, Indonesia, South Korea, Maldives, Norway, Iceland, Morocco, Brazil, Mexico, South Africa, India, and more).
+- **Country-Specific Hotlines**: Live **Emergency & Safety Hub** displaying official numbers for National Emergency, Police, Ambulance, Fire, and Tourist Assistance based on the active country.
+- **Cultural Etiquette & Transit Advisory**: Tailored regional guidance covering local dress codes, dining & tipping norms, public transit passes (SBB, Shinkansen, TGV, Metro, Nol), tap water safety, and electrical plug standards.
+- **Real Forex & Currency Converter**: Instant conversion between local destination currencies (CHF, JPY, EUR, USD, GBP, AED, THB, SGD, AUD, CAD, IDR, KRW, NOK, ISK, etc.) and INR.
 
-## Run locally
-Backend:
-1. Open a terminal in the repo root.
-2. Activate the venv: `.\.venv\Scripts\Activate.ps1`
-3. Install dependencies: `python -m pip install -r backend\requirements.txt`
-4. Start the API: `cd backend` then `uvicorn app.main:app --reload --port 8000`
+### 2. Intelligent Scenery & Photography Engine
+- **Curated High-Resolution Visuals**: Authentic Unsplash photography mapped per destination for hero banners, destination thumbnails, and day-by-day itinerary stops.
+- **Thematic Procedural Fallback**: Unlisted or off-the-beaten-path destinations procedurally load high-quality landscape collections (Alpine lakes, tropical coasts, European historic quarters, desert canyons) ensuring zero broken visuals.
 
-Optional PostgreSQL:
-- Set `DATABASE_URL` before starting the backend, for example:
-  `postgresql+psycopg://user:password@localhost:5432/ai_travel_guide`
+### 3. Multi-Agent Architecture
+- **🧭 Route Strategist**: Optimizes daily landmark sequences to minimize commute fatigue and cluster nearby attractions.
+- **🌦️ Weather Sentinel**: Integrates real-time weather forecasts via Open-Meteo and can trigger rainy-day activity replanning.
+- **💰 Budget Auditor**: Tracks trip expenses across transport, lodging, dining, activities, local travel, and emergency reserves.
+- **🛡️ Safety Guardian**: Verifies emergency hotlines and safety advisories for peace of mind.
 
-Optional real-time providers:
-- `AMADEUS_CLIENT_ID` and `AMADEUS_CLIENT_SECRET` for flight availability adapters
-- `INDIAN_RAIL_API_KEY` for live Indian train availability
-- `HOTEL_API_KEY` for live hotel rates
-- `TICKETMASTER_API_KEY` for current events
-- `AI_VISION_MODEL` to override the default vision-capable model
+### 4. Interactive Trip Studio & Toolkit
+- **Day-by-Day Itinerary Cards**: Morning, afternoon, and evening recommendations with transit tips and estimated costs.
+- **Audio Tour Guide (TTS)**: One-click synthetic voice narration for each day's plan.
+- **Activity Swap**: Instant alternative recommendations for any day plan.
+- **Offline Guide Export**: Clean, printable HTML/PDF export for travelers without mobile data.
+- **Interactive OpenStreetMap Embed**: Radius-based search for cafes, museums, monuments, and hospitals.
+- **Multimodal Vision Concierge**: Upload photos of hotels, tickets, or landmarks for AI recognition and itinerary fit.
+- **Packing Checklist & Travel Journal**: Checkable packing essentials and a photo-supported travel diary.
 
-Weather, geocoding, mapped places, and mapped opening hours use public Open-Meteo and OpenStreetMap services. The research panel labels optional providers as unavailable until credentials are configured; it does not invent current prices or availability.
+---
 
-Frontend:
-1. `cd frontend`
-2. `npm install`
-3. `npm run dev`
+## Tech Stack
 
-## Features currently available
-- Generate and save trip plans
-- View itinerary day-by-day with budget totals
-- Replan current trip with updated style / preferences
-- Review revision history
-- Chat with the assistant about route and budget changes
-- Upload travel documents or reference files
-- Search destinations directly in the embedded OpenStreetMap view
-- Use browser speech recognition to send spoken prompts to the assistant
-- Discover Indian destinations including Jaipur, Delhi, Mumbai, Goa, Kochi, Varanasi, and Udaipur
+- **Backend**: Python 3.11+, FastAPI, Pydantic v2, SQLite (PostgreSQL-ready with SQLAlchemy/Psycopg), JWT Auth (`python-jose`, `passlib`).
+- **Frontend**: React 18, TypeScript, Tailwind CSS, Vite, React Router v6 (v7 future-flag compliant).
+- **External Services**: Open-Meteo (Weather), OpenStreetMap / Overpass (Nearby Places & Geocoding).
 
-## Optional production enhancements
-1. Set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` for richer LLM-backed replies.
-2. Add a managed geocoding/routing provider for higher-volume map usage.
-3. Add image galleries, turn-by-turn route optimization, and server-side speech services.
+---
 
-<!-- markdownlint-enable MD022 MD032 -->
+## Project Structure
+
+```text
+├── backend/
+│   ├── app/
+│   │   ├── main.py            # 32 FastAPI REST API endpoints
+│   │   ├── countries.py       # Global country intelligence registry & alias resolver
+│   │   ├── catalog.py         # Destination suggestions and attraction database
+│   │   ├── planner.py         # Autonomous multi-agent itinerary planner
+│   │   ├── research.py        # Open-Meteo weather and Overpass map adapters
+│   │   ├── models.py          # SQLAlchemy database models (Users, Trips, Revisions)
+│   │   └── schemas.py         # Pydantic validation schemas
+│   ├── tests/
+│   │   ├── test_planner.py    # Unit tests for planner logic
+│   │   └── test_api.py        # Integration tests for all REST endpoints
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx            # Main Trip Studio & multi-tab travel dashboard
+│   │   ├── LandingPage.tsx    # High-impact global discovery showcase
+│   │   ├── utils/
+│   │   │   └── globalTravelAtlas.ts # Curated photography engine & country metadata
+│   │   ├── auth/              # JWT auth views (Login, Signup, Forgot, Reset)
+│   │   └── index.css          # Design system, glassmorphism, animations
+│   ├── package.json
+│   └── vite.config.ts
+└── README.md
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Python 3.11 or higher
+- Node.js 18 or higher & npm
+
+### 1. Run the Backend API
+```bash
+# Navigate to backend directory
+cd backend
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the FastAPI server
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+* Backend health check: `http://127.0.0.1:8000/health`
+* Interactive OpenAPI Swagger docs: `http://127.0.0.1:8000/docs`
+
+### 2. Run the Frontend Dev Server
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start the Vite development server
+npm run dev
+```
+* Open in browser: `http://localhost:5173`
+
+---
+
+## Running Tests
+
+Run the backend test suite:
+```bash
+# Run planner unit tests
+python -m pytest backend/tests/test_planner.py -v
+
+# Run full API endpoint test suite
+python -m pytest backend/tests/test_api.py -v
+```
+
+Verify frontend TypeScript compilation:
+```bash
+cd frontend
+npm run build
+```
+
+---
+
+## License
+MIT License. Built for travelers worldwide.
