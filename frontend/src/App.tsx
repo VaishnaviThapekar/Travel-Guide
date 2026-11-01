@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import useReveal from './hooks/useReveal.tsx';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth, authHeader } from './auth/AuthContext.tsx';
+import {
+    getScenicImageForDay,
+    getDestinationHeroImage,
+    getCountryMetadata,
+    FEATURED_GLOBAL_DESTINATIONS,
+    type CountryMetadata,
+} from './utils/globalTravelAtlas.ts';
+
 
 type ItineraryDay = {
     day: number;
@@ -202,7 +210,7 @@ type ChatMessage = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '/api');
 
-const featuredDestinations = ['Jaipur', 'Delhi', 'Mumbai', 'Goa', 'Kerala', 'Kochi', 'Varanasi', 'Udaipur', 'Himachal Pradesh', 'Mysuru'];
+const featuredDestinations = FEATURED_GLOBAL_DESTINATIONS;
 
 const travelMoods = [
     { label: 'Relaxed', icon: '🌊', color: 'sea' },
@@ -216,84 +224,31 @@ const travelMoods = [
     { label: 'Party', icon: '🎉', color: 'rose' },
 ];
 
-const DESTINATION_IMAGES: Record<string, string> = {
-    Jaipur: new URL('./assets/india.svg', import.meta.url).href,
-    Delhi: new URL('./assets/india.svg', import.meta.url).href,
-    Mumbai: new URL('./assets/india.svg', import.meta.url).href,
-    Goa: new URL('./assets/india.svg', import.meta.url).href,
-    Kochi: new URL('./assets/india.svg', import.meta.url).href,
-    Varanasi: new URL('./assets/india.svg', import.meta.url).href,
-    Paris: new URL('./assets/paris.svg', import.meta.url).href,
-    Tokyo: new URL('./assets/tokyo.svg', import.meta.url).href,
-    Lisbon: new URL('./assets/lisbon.svg', import.meta.url).href,
-    'Cape Town': new URL('./assets/capetown.svg', import.meta.url).href,
-};
-
-const DESTINATION_GALLERIES: Record<string, string[]> = {
-    Jaipur: [
-        'https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1599661046827-dacde6976549?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1524230507669-5ff97982bb5e?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1532664189809-02133fee698d?auto=format&fit=crop&w=900&q=85',
-    ],
-    Goa: [
-        'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=85',
-    ],
-    Kerala: [
-        'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1596178060810-72c7d4b8f9f4?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1577717903315-1691ae25ab3f?auto=format&fit=crop&w=900&q=85',
-    ],
-    Mumbai: [
-        'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1595658658481-d53d3f999875?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1566552881560-0be862a7c445?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1529253355930-ddbe423a2ac7?auto=format&fit=crop&w=900&q=85',
-    ],
-    Delhi: [
-        'https://images.unsplash.com/photo-1587474260584-136574528ed5?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1592639296346-560c37a0f711?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1609947017136-9daf32a5eb16?auto=format&fit=crop&w=900&q=85',
-        'https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=900&q=85',
-    ],
-};
-
-const SCENIC_FALLBACK = 'https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=900&q=85';
-
-const DAY_FALLBACK_IMAGES = [
-    SCENIC_FALLBACK,
-    'https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=900&q=85',
-    'https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=900&q=85',
-    'https://images.unsplash.com/photo-1593693397690-362cb9666fc2?auto=format&fit=crop&w=900&q=85',
-];
-
-function scenicImageForDay(destination: string, dayIndex: number) {
-    const key = destination.split(',')[0].trim();
-    const gallery = DESTINATION_GALLERIES[key];
-    if (gallery) {
-        return gallery[dayIndex % gallery.length];
-    }
-    return DAY_FALLBACK_IMAGES[dayIndex % DAY_FALLBACK_IMAGES.length];
-}
-
 function buildItinerary(destination: string, budget: number, startDate: string, endDate: string): ItineraryDay[] {
     const start = new Date(startDate);
     const end = new Date(endDate);
     const totalDays = Math.max(Math.ceil((end.getTime() - start.getTime()) / 86_400_000) + 1, 1);
     const dailyBudget = Math.max(Math.round(budget / totalDays), 1);
+    const meta = getCountryMetadata(destination);
+    const suggestions = meta.suggestions && meta.suggestions.length > 0 ? meta.suggestions : [
+        `${destination} historic center and architecture walk`,
+        `${destination} central cultural quarter and local food crawl`,
+        `${destination} panoramic viewpoint and sunset dining`,
+        `${destination} artisan craft bazaar and landmark museum`,
+    ];
 
-    return Array.from({ length: totalDays }, (_, index) => ({
-        day: index + 1,
-        title: `${destination} - Day ${index + 1}`,
-        morning: index % 2 === 0 ? 'Local breakfast and a scenic walking route' : 'Museum visit and coffee stop',
-        afternoon: index % 2 === 0 ? 'Landmark cluster with transit-aware routing' : 'Market, park, or neighborhood exploration',
-        evening: index % 2 === 0 ? 'Dinner near the hotel with a budget check' : 'Sunset viewpoint and flexible free time',
-        cost: dailyBudget,
-    }));
+    return Array.from({ length: totalDays }, (_, index) => {
+        const spot1 = suggestions[(index * 2) % suggestions.length];
+        const spot2 = suggestions[(index * 2 + 1) % suggestions.length];
+        return {
+            day: index + 1,
+            title: `${meta.name || destination} - Day ${index + 1}`,
+            morning: `Morning: ${spot1}`,
+            afternoon: `Afternoon: ${spot2} with transit-aware routing`,
+            evening: `Evening: Authentic regional culinary dinner near accommodation with budget balance`,
+            cost: dailyBudget,
+        };
+    });
 }
 
 type ActiveTab = 'planner' | 'intel' | 'chat' | 'discover' | 'journal' | 'trips';
@@ -366,6 +321,7 @@ export default function App() {
     const [savedTrips, setSavedTrips] = useState<TripListItem[]>([]);
     const [revisionHistory, setRevisionHistory] = useState<RevisionApiResponse[]>([]);
     const [displayDestination, setDisplayDestination] = useState(destination);
+    const countryMeta = useMemo(() => getCountryMetadata(destination || displayDestination), [destination, displayDestination]);
     const [displayStyle, setDisplayStyle] = useState(style);
     const [displayBudget, setDisplayBudget] = useState(budget);
     const [generatedItinerary, setGeneratedItinerary] = useState<ItineraryDay[]>(buildItinerary(destination, budget, startDate, endDate));
@@ -397,7 +353,7 @@ export default function App() {
     const [copiedShare, setCopiedShare] = useState(false);
     const [showCurrencyModal, setShowCurrencyModal] = useState(false);
     const [fxAmount, setFxAmount] = useState('100');
-    const [fxCurrency, setFxCurrency] = useState<'USD' | 'EUR' | 'GBP' | 'AUD'>('USD');
+    const [fxCurrency, setFxCurrency] = useState<string>('USD');
     const [newChecklistLabel, setNewChecklistLabel] = useState('');
     const [newChecklistCategory, setNewChecklistCategory] = useState('Packing');
     const [istTime, setIstTime] = useState(() => {
@@ -427,7 +383,12 @@ export default function App() {
         return () => clearInterval(timer);
     }, []);
 
-    const FX_RATES: Record<string, number> = { USD: 86.8, EUR: 92.5, GBP: 110.2, AUD: 56.2 };
+    const FX_RATES: Record<string, number> = {
+        USD: 86.8, EUR: 92.5, GBP: 110.2, AUD: 56.2, CHF: 97.5, JPY: 0.58, AED: 23.6,
+        THB: 2.55, SGD: 64.5, CAD: 61.2, TRY: 2.50, NZD: 51.5, IDR: 0.0055, KRW: 0.062,
+        MVR: 5.60, NOK: 8.10, ISK: 0.62, MAD: 8.70, BRL: 15.2, MXN: 4.30, ZAR: 4.80, INR: 1.0,
+        ...(countryMeta.currency ? { [countryMeta.currency.code]: countryMeta.currency.rateToInr } : {}),
+    };
     const convertedInr = Math.round(Number(fxAmount || 0) * (FX_RATES[fxCurrency] ?? 86.8));
 
     const QUICK_CHAT_PROMPTS = [
@@ -548,12 +509,12 @@ export default function App() {
     ];
     const dailyCost = Math.round(totalCost / Math.max(itinerary.length, 1));
     const placesToday = Math.min(6, Math.max(3, itinerary.length + 2));
-    const activeHeroImage = scenicImageForDay(destination, 0);
+    const activeHeroImage = countryMeta.heroImage || getDestinationHeroImage(destination || displayDestination);
 
     function buildTripFromPrompt() {
         const amount = tripPrompt.match(/₹\s*([\d,]+)/i)?.[1]?.replace(/,/g, '');
         const days = tripPrompt.match(/(\d+)\s*days?/i)?.[1];
-        const knownDestination = ['Goa', 'Kerala', 'Jaipur', 'Mumbai', 'Delhi', 'Udaipur', 'Mysuru', 'Rishikesh', 'Darjeeling'].find((item) => tripPrompt.toLowerCase().includes(item.toLowerCase()));
+        const knownDestination = FEATURED_GLOBAL_DESTINATIONS.find((item) => tripPrompt.toLowerCase().includes(item.toLowerCase()));
         if (amount) {
             setBudget(Number(amount));
         }
@@ -600,7 +561,7 @@ export default function App() {
     }, [ecoMode, destination]);
 
     const displayKey = (destination || displayDestination).split(',')[0].trim();
-    const destinationImage = DESTINATION_IMAGES[displayKey] ?? DESTINATION_IMAGES['Jaipur'];
+    const destinationImage = countryMeta.heroImage;
 
     async function generatePlan() {
         if (loading) return;
@@ -1477,12 +1438,17 @@ export default function App() {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setShowCurrencyModal(true)}
+                                onClick={() => {
+                                    if (countryMeta.currency && countryMeta.currency.code !== 'INR') {
+                                        setFxCurrency(countryMeta.currency.code);
+                                    }
+                                    setShowCurrencyModal(true);
+                                }}
                                 className="flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-3 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                                 title="Open Currency Converter"
                             >
                                 <span>💱</span>
-                                <span>FX: $1 ≈ ₹86.8</span>
+                                <span>FX: 1 {countryMeta.currency.code} ≈ ₹{countryMeta.currency.rateToInr}</span>
                             </button>
                             <button
                                 type="button"
@@ -1652,7 +1618,7 @@ export default function App() {
                                     </div>
 
                                     <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                                        <Field label="India destination" value={destination} onChange={setDestination} placeholder="Jaipur" list="destinations" />
+                                        <Field label="Destination / Country" value={destination} onChange={setDestination} placeholder="e.g. Switzerland, Japan, Paris, Goa" list="destinations" />
                                         <Field label="Travel style" value={style} onChange={setStyle} placeholder="Balanced" />
                                         <Field label="Start date" type="date" value={startDate} onChange={setStartDate} />
                                         <Field label="End date" type="date" value={endDate} onChange={setEndDate} />
@@ -1748,12 +1714,12 @@ export default function App() {
                                             >
                                                 <div className="flex items-start gap-3.5">
                                                     <img
-                                                        src={scenicImageForDay(destination, idx)}
+                                                        src={getScenicImageForDay(destination || displayDestination, idx)}
                                                         alt={`${displayKey} scenic view for day ${day.day}`}
                                                         className="h-20 w-24 rounded-2xl object-cover flex-shrink-0 shadow-sm"
                                                         onError={(event) => {
                                                             event.currentTarget.onerror = null;
-                                                            event.currentTarget.src = DAY_FALLBACK_IMAGES[idx % DAY_FALLBACK_IMAGES.length];
+                                                            event.currentTarget.src = getScenicImageForDay(destination || displayDestination, idx + 1);
                                                         }}
                                                     />
                                                     <div className="min-w-0 flex-1">
@@ -2748,13 +2714,22 @@ Friend 2: museums"
                                         <label className="text-xs font-semibold text-slate-500">Currency</label>
                                         <select
                                             value={fxCurrency}
-                                            onChange={(e) => setFxCurrency(e.target.value as any)}
+                                            onChange={(e) => setFxCurrency(e.target.value)}
                                             className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-ink outline-none"
                                         >
+                                            {countryMeta.currency && !['USD', 'EUR', 'GBP', 'AUD'].includes(countryMeta.currency.code) && (
+                                                <option value={countryMeta.currency.code}>{countryMeta.currency.code} ({countryMeta.currency.symbol})</option>
+                                            )}
                                             <option value="USD">USD ($)</option>
                                             <option value="EUR">EUR (€)</option>
                                             <option value="GBP">GBP (£)</option>
                                             <option value="AUD">AUD ($)</option>
+                                            <option value="CHF">CHF (CHF)</option>
+                                            <option value="JPY">JPY (¥)</option>
+                                            <option value="AED">AED (AED)</option>
+                                            <option value="THB">THB (฿)</option>
+                                            <option value="SGD">SGD (S$)</option>
+                                            <option value="CAD">CAD ($)</option>
                                         </select>
                                     </div>
                                 </div>

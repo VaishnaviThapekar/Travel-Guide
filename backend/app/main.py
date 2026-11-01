@@ -18,6 +18,7 @@ from .db import SessionLocal, engine
 from .models import Base, Trip, TripRevision, User
 from .planner import TripPlannerAgent
 from .catalog import DESTINATION_SUGGESTIONS
+from .countries import resolve_country, GLOBAL_COUNTRIES, COUNTRY_ALIASES
 from .travel_api import build_route, build_weather_response, nearby_places, search_places
 from .research import build_research_report
 from .schemas import (
@@ -189,23 +190,21 @@ def health() -> dict[str, str]:
 
 @app.get("/destinations/search")
 def search_destinations(q: str = "") -> dict[str, list[dict[str, str]]]:
-    catalogue = [
-        {"name": "Jaipur, Rajasthan", "region": "North India"},
-        {"name": "Delhi, Delhi", "region": "North India"},
-        {"name": "Mumbai, Maharashtra", "region": "West India"},
-        {"name": "Goa, Goa", "region": "West India"},
-        {"name": "Kochi, Kerala", "region": "South India"},
-        {"name": "Varanasi, Uttar Pradesh", "region": "North India"},
-        {"name": "Udaipur, Rajasthan", "region": "West India"},
-        {"name": "Himachal Pradesh, India", "region": "North India"},
-        {"name": "Mysuru, Karnataka", "region": "South India"},
-        {"name": "Rishikesh, Uttarakhand", "region": "North India"},
-        {"name": "Darjeeling, West Bengal", "region": "East India"},
-        {"name": "Pondicherry, Tamil Nadu", "region": "South India"},
-    ]
+    catalogue: list[dict[str, str]] = []
+    # Add all global countries
+    for c_key, c_data in GLOBAL_COUNTRIES.items():
+        catalogue.append({"name": c_data["name"], "region": c_data["region"]})
+    # Add famous cities
+    for city, country_key in COUNTRY_ALIASES.items():
+        c_info = GLOBAL_COUNTRIES.get(country_key)
+        if c_info and city.lower() != c_info['name'].lower():
+            catalogue.append({"name": f"{city.title()}, {c_info['name']}", "region": c_info["region"]})
+
     query = q.lower().strip()
-    results = [item for item in catalogue if query in item["name"].lower()]
-    return {"results": results or catalogue}
+    if not query:
+        return {"results": catalogue[:20]}
+    results = [item for item in catalogue if query in item["name"].lower() or query in item["region"].lower()]
+    return {"results": results[:20] or catalogue[:10]}
 
 
 @app.get("/weather")
@@ -402,12 +401,20 @@ def update_profile(payload: ProfileUpdate, current_user: User | None = Depends(_
 def recommend_destinations(payload: DiscoveryRequest) -> dict[str, Any]:
     interests = {item.lower() for item in payload.interests}
     candidates = [
-        {"name": "Jaipur", "region": "Rajasthan", "best_for": ["history", "food", "culture"], "season": "October to March"},
-        {"name": "Kerala", "region": "South India", "best_for": ["nature", "food", "relaxation"], "season": "November to February"},
-        {"name": "Goa", "region": "West India", "best_for": ["beaches", "food", "nightlife"], "season": "November to February"},
-        {"name": "Himachal Pradesh", "region": "North India", "best_for": ["mountains", "nature", "adventure"], "season": "March to June"},
-        {"name": "Varanasi", "region": "Uttar Pradesh", "best_for": ["history", "culture", "spirituality"], "season": "October to March"},
-        {"name": "Mumbai", "region": "Maharashtra", "best_for": ["food", "culture", "city"], "season": "October to February"},
+        {"name": "Switzerland", "region": "Central Europe", "best_for": ["mountains", "nature", "hiking", "adventure", "luxury"], "season": "June to September / Dec to March"},
+        {"name": "Japan", "region": "East Asia", "best_for": ["culture", "food", "history", "city", "technology"], "season": "March to May / Sept to Nov"},
+        {"name": "France", "region": "Western Europe", "best_for": ["culture", "art", "food", "history", "romantic"], "season": "April to June / Sept to Nov"},
+        {"name": "Italy", "region": "Southern Europe", "best_for": ["history", "food", "art", "romantic", "beaches"], "season": "April to June / Sept to Oct"},
+        {"name": "United States", "region": "North America", "best_for": ["city", "adventure", "nature", "shopping", "entertainment"], "season": "April to June / Sept to Nov"},
+        {"name": "United Kingdom", "region": "Northern Europe", "best_for": ["history", "culture", "city", "museums", "theatre"], "season": "May to September"},
+        {"name": "United Arab Emirates", "region": "Middle East", "best_for": ["luxury", "city", "desert", "shopping", "family"], "season": "November to March"},
+        {"name": "Thailand", "region": "Southeast Asia", "best_for": ["beaches", "food", "culture", "backpacker", "islands"], "season": "November to February"},
+        {"name": "Australia", "region": "Oceania", "best_for": ["beaches", "nature", "wildlife", "adventure", "coffee"], "season": "Sept to Nov / March to May"},
+        {"name": "Singapore", "region": "Southeast Asia", "best_for": ["city", "food", "family", "architecture", "shopping"], "season": "Year-round / Nov to Jan"},
+        {"name": "Greece", "region": "Southern Europe", "best_for": ["beaches", "history", "islands", "romantic", "food"], "season": "April to June / Sept to Oct"},
+        {"name": "Jaipur", "region": "Rajasthan, India", "best_for": ["history", "food", "culture", "heritage"], "season": "October to March"},
+        {"name": "Kerala", "region": "South India", "best_for": ["nature", "food", "relaxation", "wellness"], "season": "November to February"},
+        {"name": "Goa", "region": "West India", "best_for": ["beaches", "food", "nightlife", "relaxation"], "season": "November to February"},
     ]
     ranked = sorted(
         candidates,
@@ -424,45 +431,27 @@ def recommend_destinations(payload: DiscoveryRequest) -> dict[str, Any]:
 
 @app.post("/destinations/compare")
 def compare_destinations(payload: CompareRequest) -> dict[str, Any]:
-    profiles = {
-        "goa": {
-            "travel_time": "2h flight / 10h train from Mumbai",
-            "activities": "Beaches, water sports, heritage lanes",
-            "weather": "Warm coast; check monsoon dates",
-            "food": "Seafood, Goan-Portuguese, beach cafes",
-            "relaxation": "High: easy beach and slow-travel days",
-            "cost_factor": 0.86,
-        },
-        "kerala": {
-            "travel_time": "3h flight / 12h train from Mumbai",
-            "activities": "Backwaters, tea hills, wildlife, Ayurveda",
-            "weather": "Tropical; greener and wetter in monsoon",
-            "food": "Kerala sadya, seafood, spices, vegetarian options",
-            "relaxation": "Very high: houseboats, wellness, nature",
-            "cost_factor": 0.94,
-        },
-    }
     options: list[dict[str, Any]] = []
     for dest in (payload.first_destination, payload.second_destination):
-        key = dest.strip().lower()
-        profile = profiles.get(key, {
-            "travel_time": "Varies by origin and transport",
-            "activities": "Local landmarks, food, and neighborhood experiences",
-            "weather": "Check the live destination forecast",
-            "food": "Regional specialties and local markets",
-            "relaxation": "Flexible: tune the itinerary to your pace",
-            "cost_factor": 0.9,
-        })
-        estimated_cost = round(payload.budget * profile["cost_factor"])
+        intel = resolve_country(dest)
+        dest_title = dest.strip().title() or intel["name"]
+        
+        # Build authentic comparison attributes from country intelligence
+        top_activities = " · ".join([s.split(" and ")[0].split(" past ")[0].strip() for s in intel["suggestions"][:3]])
+        transit_note = intel["transport"][0]["note"] if intel.get("transport") else "Local flights & express rail"
+        food_note = ", ".join([r["cuisine"] for r in intel.get("restaurants", [])])
+        cost_factor = 0.92 if "Europe" in intel["region"] or "North America" in intel["region"] else 0.85
+        estimated_cost = round(payload.budget * cost_factor)
+
         options.append({
-            "destination": dest.strip().title(),
+            "destination": dest_title,
             "estimated_cost": estimated_cost,
             "budget_fit": estimated_cost <= payload.budget,
-            "travel_time": profile["travel_time"],
-            "activities": profile["activities"],
-            "weather": profile["weather"],
-            "food": profile["food"],
-            "relaxation": profile["relaxation"],
+            "travel_time": transit_note,
+            "activities": top_activities or "Heritage sites, scenic viewpoints & cultural walks",
+            "weather": intel.get("best_season", "Pleasant spring and autumn seasons"),
+            "food": food_note or "Regional authentic dining & street food",
+            "relaxation": "High: balanced pacing with flexible downtime",
         })
     return {
         "currency": "INR",
@@ -496,41 +485,31 @@ def group_plan(payload: GroupPlannerRequest) -> dict[str, Any]:
 @app.get("/travel/eco")
 def eco_recommendations(destination: str = "Jaipur") -> dict[str, Any]:
     city = destination.split(',')[0].strip() or "Jaipur"
+    intel = resolve_country(destination)
     return {
         "destination": city,
         "mode": "eco-friendly",
-        "priorities": [
-            "Metro, train, walking, and shared local transport first",
-            "Neighborhood businesses and locally owned stays",
-            "Fewer long transfers by clustering nearby attractions",
-            "Lower-carbon activities such as heritage walks, cycling, and nature trails",
-        ],
-        "hotel_preference": "Look for verified sustainability practices, refill stations, and efficient transit access.",
+        "priorities": intel["eco"]["priorities"],
+        "hotel_preference": intel["eco"]["hotel_preference"],
     }
 
 
 @app.get("/travel/recommendations")
 def travel_recommendations(destination: str = "Jaipur", budget: float = 100000) -> dict[str, Any]:
     city = destination.split(',')[0].strip() or "Jaipur"
+    intel = resolve_country(destination)
     return {
         "destination": city,
-        "currency": "INR",
-        "hotels": [
-            {"name": f"{city} Heritage Stay", "area": "Central heritage district", "nightly_inr": round(budget * 0.012), "rating": 4.5},
-            {"name": f"{city} Smart Budget Hotel", "area": "Transit-connected neighborhood", "nightly_inr": round(budget * 0.007), "rating": 4.1},
-        ],
-        "transport": [
-            {"mode": "Train", "note": "Best for intercity India routes", "estimated_inr": round(budget * 0.08)},
-            {"mode": "Metro and auto", "note": "Best for city days and short hops", "estimated_inr": round(budget * 0.05)},
-        ],
-        "restaurants": [
-            {"name": f"Local {city} thali house", "cuisine": "Regional Indian", "price_band": "₹₹", "area": "Near the heritage route"},
-            {"name": "Vegetarian street-food trail", "cuisine": "Local specialties", "price_band": "₹", "area": "Market district"},
-        ],
-        "route_tip": "Group attractions by neighborhood and keep the hottest part of the day for indoor or shaded stops.",
+        "country": intel["name"],
+        "currency": intel["currency"]["code"],
+        "hotels": intel["hotels"],
+        "transport": intel["transport"],
+        "restaurants": intel["restaurants"],
+        "route_tip": intel["route_tip"],
+        "etiquette": intel.get("etiquette", {}),
         "notifications": [
-            {"type": "departure", "message": "Add your train or flight details to receive departure reminders."},
-            {"type": "check-in", "message": "Hotel check-in and reservation reminders will appear here."},
+            {"type": "departure", "message": f"Add your flight or train schedule for departure reminders to {city}."},
+            {"type": "check-in", "message": f"Hotel check-in and reservation updates for {city} will be tracked here."},
         ],
     }
 

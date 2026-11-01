@@ -8,25 +8,37 @@ from typing import Any
 
 from .schemas import ReplanRequest, TripRequest
 from .catalog import DESTINATION_SUGGESTIONS
+from .countries import resolve_country
 
 class TripPlannerAgent:
     def _pick_suggestion(self, destination: str, index: int) -> str:
         key = destination.split(',')[0].strip()
-        choices = DESTINATION_SUGGESTIONS.get(key, [])
+        choices = DESTINATION_SUGGESTIONS.get(key)
         if not choices:
-            # Generic suggestions when destination unknown
-            generic = ['Historic center walk', 'Local market', 'Popular viewpoint', 'Relax at a cafe']
-            return generic[index % len(generic)]
+            country_intel = resolve_country(destination)
+            choices = country_intel.get('suggestions', [])
+        if not choices:
+            choices = [f'{destination} Historic Center Walk', f'{destination} Central Market & Cafe', f'{destination} Scenic Viewpoint', f'{destination} Cultural District']
         return choices[index % len(choices)]
 
     def _suggestions(self, destination: str, count: int) -> list[str]:
         key = destination.split(',')[0].strip()
-        choices = list(DESTINATION_SUGGESTIONS.get(key, []))
+        choices = list(DESTINATION_SUGGESTIONS.get(key) or [])
         if not choices:
-            choices = ['Historic center visit', 'Local market and food stop', 'Museum or gallery', 'Flexible rest window']
+            country_intel = resolve_country(destination)
+            choices = list(country_intel.get('suggestions') or [])
+        if not choices:
+            choices = [
+                f'{destination} historic center and architecture walk',
+                f'{destination} central cultural quarter and local food crawl',
+                f'{destination} panoramic viewpoint and sunset dining',
+                f'{destination} artisan craft bazaar and landmark museum',
+            ]
         result = choices[:count]
+        idx = 0
         while len(result) < count:
-            result.append(f'Flexible local discovery near {destination} (rest day option)')
+            result.append(f'{choices[idx % len(choices)]} (extended discovery)')
+            idx += 1
         return result
 
     def _budget_breakdown(self, total: float, total_days: int) -> dict[str, float]:

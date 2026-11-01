@@ -1,3 +1,5 @@
+from .countries import GLOBAL_COUNTRIES, COUNTRY_ALIASES
+
 DESTINATION_SUGGESTIONS: dict[str, list[str]] = {
     'Rishikesh': [
         'Ganga riverside sunrise',
@@ -78,3 +80,18 @@ DESTINATION_SUGGESTIONS: dict[str, list[str]] = {
         'Kirstenbosch Garden',
     ],
 }
+
+# Populate countries and capital cities into suggestions catalog
+for c_key, c_data in GLOBAL_COUNTRIES.items():
+    country_name = c_data["name"]
+    sugg = c_data.get("suggestions", [])
+    if country_name not in DESTINATION_SUGGESTIONS:
+        DESTINATION_SUGGESTIONS[country_name] = sugg
+    if c_key.capitalize() not in DESTINATION_SUGGESTIONS:
+        DESTINATION_SUGGESTIONS[c_key.capitalize()] = sugg
+
+# Populate aliases
+for alias, c_key in COUNTRY_ALIASES.items():
+    alias_title = alias.title()
+    if alias_title not in DESTINATION_SUGGESTIONS and c_key in GLOBAL_COUNTRIES:
+        DESTINATION_SUGGESTIONS[alias_title] = GLOBAL_COUNTRIES[c_key]["suggestions"]
